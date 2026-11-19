@@ -118,7 +118,7 @@ export function BuildingsLayer({
     >()
     for (const b of visible) {
       const shape = roofShapeForBuilding(b)
-      const riseM = roofRiseMeters(b, shape)
+      const riseM = roofRiseMeters(b, shape, exaggeration)
       const fullH = Math.max(2.5, Math.min(80, b.height))
       // Full-height walls; pitched roof is a hat seated on the measured wall top
       // (avoids floating roofs from eaves-height mismatches).

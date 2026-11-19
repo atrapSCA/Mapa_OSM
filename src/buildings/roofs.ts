@@ -100,15 +100,27 @@ export function roofShapeForBuilding(b: Building): RoofShape {
   return 'flat'
 }
 
-/** Roof rise from short span — keeps pitch natural on long buildings. */
-export function roofRiseMeters(b: Building, shape: RoofShape): number {
-  if (shape === 'flat') return 0.15
-  const ring = b.rings[0] ?? []
-  const m = footprintMetrics(ring)
-  const short = Math.max(m.shortM, 2)
-  if (shape === 'pyramidal') return Math.min(7, Math.max(2.2, short * 0.42))
-  if (shape === 'gabled') return Math.min(6.5, Math.max(2.0, short * 0.38))
-  return Math.min(5.5, Math.max(1.8, short * 0.32))
+/**
+ * Roof rise in unexaggerated metres.
+ * Uses a fixed on-screen pitch so every gable looks equally steep; divides by
+ * vertical exaggeration because only Y is scaled (otherwise roofs look like tents).
+ */
+export function roofRiseMeters(
+  b: Building,
+  shape: RoofShape,
+  verticalExaggeration = 2.2,
+): number {
+  if (shape === 'flat') return 0.12
+  const m = footprintMetrics(b.rings[0] ?? [])
+  const halfWidth = Math.max(m.shortM, 2.5) / 2
+  // Same visual pitch for all roofs of a given type (~28–32°)
+  const pitchDeg = shape === 'pyramidal' ? 32 : shape === 'gabled' ? 28 : 24
+  const exag = Math.max(verticalExaggeration, 1)
+  const riseForPitch =
+    (Math.tan((pitchDeg * Math.PI) / 180) * halfWidth) / exag
+  const wallH = Math.max(2.5, Math.min(80, b.height))
+  // Never taller than ~28% of the wall; keep a modest absolute band
+  return Math.max(0.7, Math.min(riseForPitch, wallH * 0.28, 2.8))
 }
 
 function openRing(ring: [number, number][]): [number, number][] {
