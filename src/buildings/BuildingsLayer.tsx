@@ -25,7 +25,11 @@ import {
 } from './roofs'
 import { facadeColorForBuilding } from './facades'
 import { getSkinMaterial, presetForKind } from './skins'
-import { createWindowGeometry, getWindowMaterial } from './windows'
+import {
+  createWindowGeometry,
+  getDarkWindowMaterial,
+  getLitWindowMaterial,
+} from './windows'
 
 const CLICK_MAX_MOVE_PX = 4
 
@@ -110,7 +114,8 @@ export function BuildingsLayer({
       {
         walls: THREE.BufferGeometry
         roof: THREE.BufferGeometry | null
-        windows: THREE.BufferGeometry | null
+        windowsDark: THREE.BufferGeometry | null
+        windowsLit: THREE.BufferGeometry | null
       }
     >()
     for (const b of visible) {
@@ -139,8 +144,13 @@ export function BuildingsLayer({
       )
       const yBase = buildingBaseY(b, terrain, exaggeration)
       const wallHExag = yEaves - yBase
-      const windows = createWindowGeometry(b, yBase, wallHExag, shape)
-      map.set(b.id, { walls, roof, windows })
+      const wins = createWindowGeometry(b, yBase, wallHExag, shape)
+      map.set(b.id, {
+        walls,
+        roof,
+        windowsDark: wins.dark,
+        windowsLit: wins.lit,
+      })
     }
     return map
   }, [visible, terrain, exaggeration])
@@ -234,14 +244,16 @@ export function BuildingsLayer({
     [],
   )
 
-  const windowMat = useMemo(() => getWindowMaterial(), [])
+  const darkWindowMat = useMemo(() => getDarkWindowMaterial(), [])
+  const litWindowMat = useMemo(() => getLitWindowMaterial(), [])
 
   useEffect(() => {
     return () => {
       for (const p of parts.values()) {
         p.walls.dispose()
         p.roof?.dispose()
-        p.windows?.dispose()
+        p.windowsDark?.dispose()
+        p.windowsLit?.dispose()
       }
     }
   }, [parts])
@@ -329,10 +341,19 @@ export function BuildingsLayer({
                 onSelect={select}
               />
             )}
-            {part.windows && (
+            {part.windowsDark && (
               <mesh
-                geometry={part.windows}
-                material={windowMat}
+                geometry={part.windowsDark}
+                material={darkWindowMat}
+                frustumCulled={false}
+                castShadow={false}
+                renderOrder={2}
+              />
+            )}
+            {part.windowsLit && (
+              <mesh
+                geometry={part.windowsLit}
+                material={litWindowMat}
                 frustumCulled={false}
                 castShadow={false}
                 renderOrder={2}

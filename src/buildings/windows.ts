@@ -41,42 +41,62 @@ export function storeysForWindows(
   return Math.min(18, Math.round(h / 3.2))
 }
 
+export type WindowGeometries = {
+  /** Daytime dark glass — majority. */
+  dark: THREE.BufferGeometry | null
+  /** Sparse lit interiors. */
+  lit: THREE.BufferGeometry | null
+}
+
+function flushGeo(
+  positions: number[],
+  indices: number[],
+): THREE.BufferGeometry | null {
+  if (indices.length < 3) return null
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geo.setIndex(indices)
+  geo.computeVertexNormals()
+  return geo
+}
+
 /**
- * Lit window quads on façade walls.
- * yBase = building foot; wallHExag = wall height already exaggerated.
+ * Window quads on façades. Most are dark (day); few lit.
  */
 export function createWindowGeometry(
   b: Building,
   yBase: number,
   wallHExag: number,
   roofShape: RoofShape,
-): THREE.BufferGeometry | null {
+): WindowGeometries {
+  const empty: WindowGeometries = { dark: null, lit: null }
   const kind = normalizeKind(b.kind)
-  if (kind === 'garage') return null
-  if (kind === 'church') return null
-  if (!(wallHExag > 0.5)) return null
+  if (kind === 'garage') return empty
+  if (kind === 'church') return empty
+  if (!(wallHExag > 0.5)) return empty
 
   const ring = openRing(b.rings[0] ?? [])
-  if (ring.length < 3) return null
+  if (ring.length < 3) return empty
 
-  const positions: number[] = []
-  const indices: number[] = []
+  const darkPos: number[] = []
+  const darkIdx: number[] = []
+  const litPos: number[] = []
+  const litIdx: number[] = []
 
   const winW = kind === 'apartments' ? 1.35 : 1.1
   const winH = kind === 'apartments' ? 1.4 : 1.2
   const rows = Math.max(1, storeysForWindows(b.height, roofShape))
-  // Most windows lit so façades read clearly from above
-  const litChance = kind === 'industrial' ? 0.45 : 0.78
+  // Daytime: only a small share glowing
+  const litChance = kind === 'industrial' ? 0.06 : 0.12
 
   const pitched = roofShape === 'gabled' || roofShape === 'pyramidal'
   const topMargin = wallHExag * (pitched ? 0.14 : 0.06)
   const usableH = Math.max(0.8, wallHExag - topMargin)
   const rowPitch = usableH / rows
-  // Keep window height readable vs wall (exaggeration-aware)
   const exag = wallHExag / Math.max(2.5, Math.min(80, b.height))
   const winHEx = Math.min(Math.max(winH * exag, rowPitch * 0.35), rowPitch * 0.62)
   const sill0 = Math.min(0.9 * exag, rowPitch * 0.2)
-  const outset = 0.22 // outside wall — avoids z-fight / buried quads
+  const outset = 0.22
 
   let cx = 0
   let cz = 0
@@ -96,7 +116,6 @@ export function createWindowGeometry(
     const len = Math.hypot(dx, dz)
     if (len < winW * 1.6) continue
 
-    // Outward normal (away from centroid)
     let nx = -dz / len
     let nz = dx / len
     const mx = (a[0] + c[0]) / 2
@@ -114,7 +133,7 @@ export function createWindowGeometry(
     for (let i = 0; i < count; i++) {
       for (let f = 0; f < rows; f++) {
         salt++
-        if (hash01(b.id, salt) > litChance) continue
+        const lit = hash01(b.id, salt) < litChance
 
         const tCenter = margin / len + ((i + 0.5) / count) * (usable / len)
         const halfTw = (winW * 0.5) / len
@@ -131,29 +150,38 @@ export function createWindowGeometry(
         const x1 = a[0] + dx * t1 + nx * outset
         const z1 = a[1] + dz * t1 + nz * outset
 
+        const positions = lit ? litPos : darkPos
+        const indices = lit ? litIdx : darkIdx
         const base = positions.length / 3
-        // Quad facing outward: a,b along edge, up
         positions.push(x0, y0, z0, x1, y0, z1, x1, y1, z1, x0, y1, z0)
-        // CCW when viewed from outside (along -normal): bottomL, bottomR, topR / bottomL, topR, topL
-        // Edge a→c with outward n: from outside, a is right, c is left → flip to x1,x0 for CCW
         indices.push(base + 1, base, base + 3, base + 1, base + 3, base + 2)
       }
     }
   }
 
-  if (indices.length < 3) return null
-
-  const geo = new THREE.BufferGeometry()
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  geo.setIndex(indices)
-  geo.computeVertexNormals()
-  return geo
+  return {
+    dark: flushGeo(darkPos, darkIdx),
+    lit: flushGeo(litPos, litIdx),
+  }
 }
 
-const windowMat = new THREE.MeshStandardMaterial({
+const darkWindowMat = new THREE.MeshStandardMaterial({
+  color: '#3a4550',
+  emissive: '#000000',
+  emissiveIntensity: 0,
+  roughness: 0.35,
+  metalness: 0.15,
+  flatShading: true,
+  side: THREE.DoubleSide,
+  polygonOffset: true,
+  polygonOffsetFactor: -4,
+  polygonOffsetUnits: -4,
+})
+
+const litWindowMat = new THREE.MeshStandardMaterial({
   color: '#ffe8a8',
   emissive: '#ffcc55',
-  emissiveIntensity: 1.6,
+  emissiveIntensity: 1.4,
   roughness: 0.35,
   metalness: 0,
   flatShading: true,
@@ -162,9 +190,17 @@ const windowMat = new THREE.MeshStandardMaterial({
   polygonOffset: true,
   polygonOffsetFactor: -4,
   polygonOffsetUnits: -4,
-  depthWrite: true,
 })
 
+export function getDarkWindowMaterial(): THREE.MeshStandardMaterial {
+  return darkWindowMat
+}
+
+export function getLitWindowMaterial(): THREE.MeshStandardMaterial {
+  return litWindowMat
+}
+
+/** @deprecated use getDarkWindowMaterial / getLitWindowMaterial */
 export function getWindowMaterial(): THREE.MeshStandardMaterial {
-  return windowMat
+  return litWindowMat
 }
