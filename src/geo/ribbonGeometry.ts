@@ -55,7 +55,7 @@ function polylineLength(points: [number, number][]): number {
  */
 export function smoothPolyline(
   pointsIn: [number, number][],
-  spacingMeters = 2.2,
+  spacingMeters = 6,
   closedHint = false,
 ): [number, number][] {
   let points = dedupe(pointsIn)
@@ -176,8 +176,9 @@ export function ribbonGeometry(
     }
     return Math.hypot(maxX - minX, maxZ - minZ)
   })()
+  // Perf: coarser sampling (was ~0.9–1.5 m). Roundabouts stay denser.
   const spacing =
-    closed && bboxSpan < 120 ? 0.9 : closed ? 1.2 : 1.5
+    closed && bboxSpan < 120 ? 2.4 : closed ? 3.5 : 7
 
   const points = smoothPolyline(raw, spacing, closed)
   if (points.length < 2) return null

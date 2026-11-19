@@ -6,16 +6,13 @@ import type {
   ContinuousTerrainJson,
 } from '@shared/tileFormat'
 import { normalizeKind } from '@shared/osmLabels'
+import { pointInPolygon, ringsBBox } from '@/geo/pointInPolygon'
 import { useLayers } from '@/store/layers'
 import { useSelection } from '@/store/selection'
 import { buildingBaseY, buildingGeometry, geometryMaxY } from './buildingGeom'
 import { BuildingBubble } from './BuildingBubble'
+import { extractMaterialGroup, mergeGeometries } from './mergeGeometries'
 import {
-  FLAT_DETAIL_COLOR,
-  FLAT_PARAPET_COLOR,
-} from './flatRoofVariants'
-import {
-  CHIMNEY_COLOR,
   createRoofGeometry,
   GABLE_WOOD_COLOR,
   gableIsWood,
@@ -32,23 +29,63 @@ import {
 } from './windows'
 
 const CLICK_MAX_MOVE_PX = 4
+/** Windows only inside this radius of camera XZ when zoomed in. */
+const DETAIL_RADIUS_M = 900
+const DETAIL_RADIUS2 = DETAIL_RADIUS_M * DETAIL_RADIUS_M
 
-/** Camera distance LOD: 0 near (windows+roof details), ≥1 shells only. */
-function useBuildingLod(): 0 | 1 {
-  const [lod, setLod] = useState<0 | 1>(1)
-  const ref = useRef<0 | 1>(1)
+type PickRec = {
+  id: string
+  rings: [number, number][][]
+  minX: number
+  maxX: number
+  minZ: number
+  maxZ: number
+  cx: number
+  cz: number
+}
+
+type LodFocus = {
+  near: boolean
+  x: number
+  z: number
+}
+
+/** Camera distance + XZ focus for local window LOD. */
+function useBuildingLodFocus(): LodFocus {
+  const [focus, setFocus] = useState<LodFocus>({ near: false, x: 0, z: 0 })
+  const ref = useRef<LodFocus>({ near: false, x: 0, z: 0 })
   useFrame(({ camera }) => {
     const d = camera.position.length()
     const cur = ref.current
-    // Hysteresis so zooming across the threshold doesn't thrash rebuilds.
-    let next: 0 | 1 = cur
-    if (cur === 0 && d > 3200) next = 1
-    else if (cur === 1 && d < 2600) next = 0
-    if (next === cur) return
+    let near = cur.near
+    if (cur.near && d > 3200) near = false
+    else if (!cur.near && d < 2600) near = true
+
+    const x = camera.position.x
+    const z = camera.position.z
+    const moved = Math.hypot(x - cur.x, z - cur.z)
+    // Rebuild window batches only when focus jumps or near flips.
+    if (near === cur.near && (!near || moved < 220)) return
+    const next = { near, x, z }
     ref.current = next
-    setLod(next)
+    setFocus(next)
   })
-  return lod
+  return focus
+}
+
+function pickBuildingId(x: number, z: number, picks: PickRec[]): string | null {
+  let best: PickRec | null = null
+  let bestD = Infinity
+  for (const p of picks) {
+    if (x < p.minX || x > p.maxX || z < p.minZ || z > p.maxZ) continue
+    if (!pointInPolygon(x, z, p.rings)) continue
+    const d = (x - p.cx) * (x - p.cx) + (z - p.cz) * (z - p.cz)
+    if (d < bestD) {
+      bestD = d
+      best = p
+    }
+  }
+  return best?.id ?? null
 }
 
 const highlightMat = new THREE.MeshStandardMaterial({
@@ -60,18 +97,14 @@ const highlightMat = new THREE.MeshStandardMaterial({
   metalness: 0.05,
 })
 
-function ClickMesh({
-  buildingId,
+function BatchMesh({
   geometry,
-  materials,
-  selected,
-  onSelect,
+  material,
+  onPick,
 }: {
-  buildingId: string
   geometry: THREE.BufferGeometry
-  materials: THREE.Material | THREE.Material[]
-  selected: boolean
-  onSelect: (id: string) => void
+  material: THREE.Material
+  onPick: (x: number, z: number) => void
 }) {
   const down = useRef<{ x: number; y: number } | null>(null)
 
@@ -87,21 +120,34 @@ function ClickMesh({
       const dist = Math.hypot(e.clientX - d.x, e.clientY - d.y)
       if (dist > CLICK_MAX_MOVE_PX) return
     }
-    onSelect(buildingId)
+    onPick(e.point.x, e.point.z)
   }
 
   return (
     <mesh
-      name={buildingId}
       geometry={geometry}
-      material={selected ? highlightMat : materials}
-      userData={{ buildingId }}
+      material={material}
+      userData={{ buildingId: '__batch__' }}
       frustumCulled
       castShadow={false}
       onPointerDown={onPointerDown}
       onClick={onClick}
     />
   )
+}
+
+function pushBatch(
+  map: Map<string, THREE.BufferGeometry[]>,
+  key: string,
+  geo: THREE.BufferGeometry | null,
+) {
+  if (!geo) return
+  let arr = map.get(key)
+  if (!arr) {
+    arr = []
+    map.set(key, arr)
+  }
+  arr.push(geo)
 }
 
 export function BuildingsLayer({
@@ -119,8 +165,7 @@ export function BuildingsLayer({
   const selectedId = useSelection((s) => s.selectedId)
   const select = useSelection((s) => s.select)
   void kindEnabled
-  const lod = useBuildingLod()
-  const near = lod === 0
+  const focus = useBuildingLodFocus()
 
   const visible = useMemo(() => {
     return buildings.buildings.filter((b) =>
@@ -128,34 +173,86 @@ export function BuildingsLayer({
     )
   }, [buildings.buildings, isKindOn, kindEnabled])
 
-  /** Walls + simple roofs — stable across zoom; not rebuilt on LOD change. */
-  const shells = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        walls: THREE.BufferGeometry
-        roof: THREE.BufferGeometry | null
-        yBase: number
-        yEaves: number
-        wallHExag: number
-        shape: ReturnType<typeof roofShapeForBuilding>
-      }
-    >()
+  const pickIndex = useMemo((): PickRec[] => {
+    const out: PickRec[] = []
     for (const b of visible) {
+      const rings = b.rings
+      if (!rings?.[0] || rings[0].length < 3) continue
+      const { minX, maxX, minZ, maxZ } = ringsBBox(rings)
+      let cx = 0
+      let cz = 0
+      const ring = rings[0]
+      const n =
+        ring.length > 1 &&
+        ring[0][0] === ring[ring.length - 1][0] &&
+        ring[0][1] === ring[ring.length - 1][1]
+          ? ring.length - 1
+          : ring.length
+      for (let i = 0; i < n; i++) {
+        cx += ring[i][0]
+        cz += ring[i][1]
+      }
+      cx /= Math.max(1, n)
+      cz /= Math.max(1, n)
+      out.push({ id: b.id, rings, minX, maxX, minZ, maxZ, cx, cz })
+    }
+    return out
+  }, [visible])
+
+  const pickById = useMemo(() => {
+    const m = new Map<string, PickRec>()
+    for (const p of pickIndex) m.set(p.id, p)
+    return m
+  }, [pickIndex])
+
+  /** Batched wall/roof meshes — stable across zoom. */
+  const batches = useMemo(() => {
+    const wallParts = new Map<string, THREE.BufferGeometry[]>()
+    const roofSlopeParts = new Map<string, THREE.BufferGeometry[]>()
+    const roofGableParts = new Map<string, THREE.BufferGeometry[]>()
+    const skinWalls: {
+      id: string
+      geo: THREE.BufferGeometry
+      mat: THREE.Material
+    }[] = []
+    const meta = new Map<
+      string,
+      { yBase: number; yEaves: number; wallHExag: number; shape: string }
+    >()
+
+    for (const b of visible) {
+      const kind = normalizeKind(b.kind)
       const shape = roofShapeForBuilding(b)
       const riseM = roofRiseMeters(b, shape, exaggeration)
       const fullH = Math.max(2.5, Math.min(80, b.height))
-      const walls = buildingGeometry(
-        b,
-        terrain,
-        exaggeration,
-        fullH,
-        true,
-      )
+      const walls = buildingGeometry(b, terrain, exaggeration, fullH, true)
       if (!walls) continue
 
       const yEaves = geometryMaxY(walls) - 0.02
       const yBase = buildingBaseY(b, terrain, exaggeration)
+      meta.set(b.id, {
+        yBase,
+        yEaves,
+        wallHExag: yEaves - yBase,
+        shape,
+      })
+
+      const facadeColor = facadeColorForBuilding(b)
+      const useSkin =
+        skinsOn &&
+        (kind === 'industrial' || kind === 'garage' || kind === 'farm')
+
+      if (useSkin) {
+        const preset = presetForKind(kind)
+        skinWalls.push({
+          id: b.id,
+          geo: walls,
+          mat: getSkinMaterial(preset.wall, 'wall', facadeColor),
+        })
+      } else {
+        pushBatch(wallParts, facadeColor, walls)
+      }
+
       const roof = createRoofGeometry(
         b.rings[0],
         yEaves,
@@ -165,97 +262,146 @@ export function BuildingsLayer({
         exaggeration,
         false,
       )
-      map.set(b.id, {
-        walls,
-        roof,
-        yBase,
-        yEaves,
-        wallHExag: yEaves - yBase,
-        shape,
-      })
-    }
-    return map
-  }, [visible, terrain, exaggeration])
+      if (roof) {
+        const slopeColor = roofColorForBuilding(b, shape)
+        const slope = extractMaterialGroup(roof, 0)
+        pushBatch(roofSlopeParts, slopeColor, slope)
 
-  /** Windows + detailed roofs only when camera is near. */
-  const details = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        roof: THREE.BufferGeometry | null
-        windowsDark: THREE.BufferGeometry | null
-        windowsLit: THREE.BufferGeometry | null
+        if ((roof.groups?.length ?? 0) >= 2) {
+          const gable = extractMaterialGroup(roof, 1)
+          const gableKey = gableIsWood(b) ? '__wood__' : facadeColor
+          pushBatch(roofGableParts, gableKey, gable)
+        }
+        roof.dispose()
       }
-    >()
-    if (!near) return map
+    }
+
+    const wallMerged = new Map<string, THREE.BufferGeometry>()
+    for (const [k, parts] of wallParts) {
+      const m = mergeGeometries(parts)
+      for (const p of parts) p.dispose()
+      if (m) wallMerged.set(k, m)
+    }
+
+    const slopeMerged = new Map<string, THREE.BufferGeometry>()
+    for (const [k, parts] of roofSlopeParts) {
+      const m = mergeGeometries(parts)
+      for (const p of parts) p.dispose()
+      if (m) slopeMerged.set(k, m)
+    }
+
+    const gableMerged = new Map<string, THREE.BufferGeometry>()
+    for (const [k, parts] of roofGableParts) {
+      const m = mergeGeometries(parts)
+      for (const p of parts) p.dispose()
+      if (m) gableMerged.set(k, m)
+    }
+
+    return { wallMerged, slopeMerged, gableMerged, skinWalls, meta }
+  }, [visible, terrain, exaggeration, skinsOn])
+
+  /** Windows only near camera focus — two merged meshes. */
+  const windowBatches = useMemo(() => {
+    if (!focus.near) {
+      return {
+        dark: null as THREE.BufferGeometry | null,
+        lit: null as THREE.BufferGeometry | null,
+      }
+    }
+    const darkParts: THREE.BufferGeometry[] = []
+    const litParts: THREE.BufferGeometry[] = []
     for (const b of visible) {
-      const shell = shells.get(b.id)
-      if (!shell) continue
-      const riseM = roofRiseMeters(b, shell.shape, exaggeration)
-      const roof = createRoofGeometry(
-        b.rings[0],
-        shell.yEaves,
-        shell.shape,
-        riseM * exaggeration,
-        b,
-        exaggeration,
-        true,
-      )
+      const pick = pickById.get(b.id)
+      const meta = batches.meta.get(b.id)
+      if (!pick || !meta) continue
+      const dx = pick.cx - focus.x
+      const dz = pick.cz - focus.z
+      if (dx * dx + dz * dz > DETAIL_RADIUS2) continue
       const wins = createWindowGeometry(
         b,
-        shell.yBase,
-        shell.wallHExag,
-        shell.shape,
+        meta.yBase,
+        meta.wallHExag,
+        meta.shape as ReturnType<typeof roofShapeForBuilding>,
       )
-      map.set(b.id, {
-        roof,
-        windowsDark: wins.dark,
-        windowsLit: wins.lit,
-      })
+      if (wins.dark) darkParts.push(wins.dark)
+      if (wins.lit) litParts.push(wins.lit)
     }
-    return map
-  }, [near, visible, shells, exaggeration])
+    const dark = mergeGeometries(darkParts)
+    const lit = mergeGeometries(litParts)
+    for (const g of darkParts) g.dispose()
+    for (const g of litParts) g.dispose()
+    return { dark, lit }
+  }, [focus, visible, pickById, batches.meta])
 
-  /** Muted CZ façade colours — shared material per hex. */
+  /** Selected building overlay (single mesh pair). */
+  const selectionGeos = useMemo(() => {
+    if (!selectedId) return null
+    const b = visible.find((x) => x.id === selectedId)
+    if (!b) return null
+    const shape = roofShapeForBuilding(b)
+    const riseM = roofRiseMeters(b, shape, exaggeration)
+    const fullH = Math.max(2.5, Math.min(80, b.height))
+    const walls = buildingGeometry(b, terrain, exaggeration, fullH, true)
+    if (!walls) return null
+    const yEaves = geometryMaxY(walls) - 0.02
+    const roof = createRoofGeometry(
+      b.rings[0],
+      yEaves,
+      shape,
+      riseM * exaggeration,
+      b,
+      exaggeration,
+      false,
+    )
+    return { walls, roof }
+  }, [selectedId, visible, terrain, exaggeration])
+
   const facadeMaterials = useMemo(() => {
     const map = new Map<string, THREE.MeshStandardMaterial>()
-    const get = (color: string) => {
-      let m = map.get(color)
-      if (!m) {
-        m = new THREE.MeshStandardMaterial({
+    for (const color of batches.wallMerged.keys()) {
+      map.set(
+        color,
+        new THREE.MeshStandardMaterial({
           color,
           flatShading: true,
           roughness: 0.94,
           metalness: 0.02,
-        })
-        map.set(color, m)
-      }
-      return m
+          side: THREE.DoubleSide,
+        }),
+      )
     }
-    for (const b of visible) get(facadeColorForBuilding(b))
+    for (const color of batches.gableMerged.keys()) {
+      if (color === '__wood__' || map.has(color)) continue
+      map.set(
+        color,
+        new THREE.MeshStandardMaterial({
+          color,
+          flatShading: true,
+          roughness: 0.94,
+          metalness: 0.02,
+          side: THREE.DoubleSide,
+        }),
+      )
+    }
     return map
-  }, [visible])
+  }, [batches.wallMerged, batches.gableMerged])
 
-  /** CZ red/brown roof tiles — one shared material per colour hex. */
   const roofSlopeMaterials = useMemo(() => {
     const map = new Map<string, THREE.MeshStandardMaterial>()
-    const get = (color: string) => {
-      let m = map.get(color)
-      if (!m) {
-        m = new THREE.MeshStandardMaterial({
+    for (const color of batches.slopeMerged.keys()) {
+      map.set(
+        color,
+        new THREE.MeshStandardMaterial({
           color,
           flatShading: true,
           roughness: 0.92,
           metalness: 0.05,
           side: THREE.DoubleSide,
-        })
-        map.set(color, m)
-      }
-      return m
+        }),
+      )
     }
-    for (const b of visible) get(roofColorForBuilding(b, roofShapeForBuilding(b)))
     return map
-  }, [visible])
+  }, [batches.slopeMerged])
 
   const woodGableMat = useMemo(
     () =>
@@ -269,81 +415,39 @@ export function BuildingsLayer({
     [],
   )
 
-  const flatParapetMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: FLAT_PARAPET_COLOR,
-        flatShading: true,
-        roughness: 0.9,
-        metalness: 0.06,
-        side: THREE.DoubleSide,
-      }),
-    [],
-  )
-
-  const flatDetailMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: FLAT_DETAIL_COLOR,
-        flatShading: true,
-        roughness: 0.85,
-        metalness: 0.15,
-        side: THREE.DoubleSide,
-      }),
-    [],
-  )
-
-  const chimneyMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: CHIMNEY_COLOR,
-        flatShading: true,
-        roughness: 0.9,
-        metalness: 0.04,
-        side: THREE.DoubleSide,
-      }),
-    [],
-  )
-
   const darkWindowMat = useMemo(() => getDarkWindowMaterial(), [])
   const litWindowMat = useMemo(() => getLitWindowMaterial(), [])
 
   useEffect(() => {
     return () => {
-      for (const p of shells.values()) {
-        p.walls.dispose()
-        p.roof?.dispose()
-      }
+      for (const g of batches.wallMerged.values()) g.dispose()
+      for (const g of batches.slopeMerged.values()) g.dispose()
+      for (const g of batches.gableMerged.values()) g.dispose()
+      for (const s of batches.skinWalls) s.geo.dispose()
     }
-  }, [shells])
+  }, [batches])
 
   useEffect(() => {
     return () => {
-      for (const p of details.values()) {
-        p.roof?.dispose()
-        p.windowsDark?.dispose()
-        p.windowsLit?.dispose()
-      }
+      windowBatches.dark?.dispose()
+      windowBatches.lit?.dispose()
     }
-  }, [details])
+  }, [windowBatches])
+
+  useEffect(() => {
+    return () => {
+      selectionGeos?.walls.dispose()
+      selectionGeos?.roof?.dispose()
+    }
+  }, [selectionGeos])
 
   useEffect(() => {
     return () => {
       for (const m of facadeMaterials.values()) m.dispose()
       for (const m of roofSlopeMaterials.values()) m.dispose()
       woodGableMat.dispose()
-      flatParapetMat.dispose()
-      flatDetailMat.dispose()
-      chimneyMat.dispose()
     }
-  }, [
-    facadeMaterials,
-    roofSlopeMaterials,
-    woodGableMat,
-    flatParapetMat,
-    flatDetailMat,
-    chimneyMat,
-  ])
+  }, [facadeMaterials, roofSlopeMaterials, woodGableMat])
 
   if (!show) return null
 
@@ -351,88 +455,87 @@ export function BuildingsLayer({
     ? (visible.find((b) => b.id === selectedId) ?? null)
     : null
 
+  const onPick = (x: number, z: number) => {
+    const id = pickBuildingId(x, z, pickIndex)
+    if (id) select(id)
+  }
+
   return (
     <group>
-      {visible.map((b) => {
-        const shell = shells.get(b.id)
-        if (!shell) return null
-        const detail = details.get(b.id)
-        const kind = normalizeKind(b.kind)
-        const selected = b.id === selectedId
-
-        const facadeColor = facadeColorForBuilding(b)
-        // Flat pastel colour for façades (skin albedo was washing towns to grey).
-        // Textured skins only on industrial / garage / farm.
-        let wallMat: THREE.Material =
-          facadeMaterials.get(facadeColor) ??
-          facadeMaterials.values().next().value!
-        if (
-          skinsOn &&
-          (kind === 'industrial' || kind === 'garage' || kind === 'farm')
-        ) {
-          const preset = presetForKind(kind)
-          wallMat = getSkinMaterial(preset.wall, 'wall', facadeColor)
-        }
-
-        const shape = shell.shape
-        const slopeColor = roofColorForBuilding(b, shape)
-        const slopeMat =
-          roofSlopeMaterials.get(slopeColor) ??
-          roofSlopeMaterials.values().next().value!
-        const gableMat = gableIsWood(b) ? woodGableMat : wallMat
-        const roofGeom = detail?.roof ?? shell.roof
-        const nGroups = roofGeom?.groups.length ?? 0
-        let roofMats: THREE.Material | THREE.Material[] = slopeMat
-        if (shape === 'flat' && nGroups >= 2) {
-          roofMats =
-            nGroups >= 3
-              ? [slopeMat, flatParapetMat, flatDetailMat]
-              : [slopeMat, flatParapetMat]
-        } else if (shape === 'gabled' && nGroups >= 3) {
-          roofMats = [slopeMat, gableMat, chimneyMat]
-        } else if (nGroups === 2) {
-          roofMats = [slopeMat, gableMat]
-        }
-
+      {[...batches.wallMerged.entries()].map(([color, geo]) => (
+        <BatchMesh
+          key={`w-${color}`}
+          geometry={geo}
+          material={facadeMaterials.get(color)!}
+          onPick={onPick}
+        />
+      ))}
+      {batches.skinWalls.map((s) => (
+        <BatchMesh
+          key={`sw-${s.id}`}
+          geometry={s.geo}
+          material={s.mat}
+          onPick={onPick}
+        />
+      ))}
+      {[...batches.slopeMerged.entries()].map(([color, geo]) => (
+        <BatchMesh
+          key={`rs-${color}`}
+          geometry={geo}
+          material={roofSlopeMaterials.get(color)!}
+          onPick={onPick}
+        />
+      ))}
+      {[...batches.gableMerged.entries()].map(([key, geo]) => {
+        const mat =
+          key === '__wood__'
+            ? woodGableMat
+            : (facadeMaterials.get(key) ?? woodGableMat)
         return (
-          <group key={b.id}>
-            <ClickMesh
-              buildingId={b.id}
-              geometry={shell.walls}
-              materials={wallMat}
-              selected={selected}
-              onSelect={select}
-            />
-            {roofGeom && (
-              <ClickMesh
-                buildingId={b.id}
-                geometry={roofGeom}
-                materials={roofMats}
-                selected={selected}
-                onSelect={select}
-              />
-            )}
-            {detail?.windowsDark && (
-              <mesh
-                geometry={detail.windowsDark}
-                material={darkWindowMat}
-                frustumCulled
-                castShadow={false}
-                renderOrder={2}
-              />
-            )}
-            {detail?.windowsLit && (
-              <mesh
-                geometry={detail.windowsLit}
-                material={litWindowMat}
-                frustumCulled
-                castShadow={false}
-                renderOrder={2}
-              />
-            )}
-          </group>
+          <BatchMesh
+            key={`rg-${key}`}
+            geometry={geo}
+            material={mat}
+            onPick={onPick}
+          />
         )
       })}
+      {windowBatches.dark && (
+        <mesh
+          geometry={windowBatches.dark}
+          material={darkWindowMat}
+          frustumCulled
+          castShadow={false}
+          renderOrder={2}
+        />
+      )}
+      {windowBatches.lit && (
+        <mesh
+          geometry={windowBatches.lit}
+          material={litWindowMat}
+          frustumCulled
+          castShadow={false}
+          renderOrder={2}
+        />
+      )}
+      {selectionGeos && (
+        <mesh
+          geometry={selectionGeos.walls}
+          material={highlightMat}
+          frustumCulled
+          castShadow={false}
+          renderOrder={3}
+        />
+      )}
+      {selectionGeos?.roof && (
+        <mesh
+          geometry={selectionGeos.roof}
+          material={highlightMat}
+          frustumCulled
+          castShadow={false}
+          renderOrder={3}
+        />
+      )}
       {selected && (
         <BuildingBubble
           building={selected}

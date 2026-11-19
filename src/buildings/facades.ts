@@ -143,7 +143,8 @@ export function facadeColorForBuilding(b: Building): string {
   // commercial / public / house / building → lively town palette
 
   const i = Math.floor(hash01(b.id + ':facade') * palette.length) % palette.length
-  // Per-building wear so the town doesn't look uniformly washed
-  const amount = weather + hash01(b.id + ':age') * 0.12
+  // Discrete wear tiers (not continuous) so GPU batches stay mergeable.
+  const ageTier = Math.floor(hash01(b.id + ':age') * 4) // 0..3
+  const amount = weather + ageTier * 0.035
   return weatherFacade(palette[i], amount)
 }
