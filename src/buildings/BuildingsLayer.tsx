@@ -184,7 +184,7 @@ export function BuildingsLayer({
       }
       return m
     }
-    for (const b of visible) get(roofColorForBuilding(b))
+    for (const b of visible) get(roofColorForBuilding(b, roofShapeForBuilding(b)))
     return map
   }, [visible])
 
@@ -242,7 +242,8 @@ export function BuildingsLayer({
           wallMat = flatMaterials.get(kind)!
         }
 
-        const slopeColor = roofColorForBuilding(b)
+        const shape = roofShapeForBuilding(b)
+        const slopeColor = roofColorForBuilding(b, shape)
         const slopeMat =
           roofSlopeMaterials.get(slopeColor) ??
           roofSlopeMaterials.values().next().value!

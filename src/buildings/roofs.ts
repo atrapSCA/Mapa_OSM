@@ -9,7 +9,7 @@ export type RoofShape = 'flat' | 'gabled' | 'pyramidal' | 'skillion'
 /** Eaves overhang beyond wall footprint (metres). */
 const EAVES_OVERHANG_M = 0.3
 
-/** Typical CZ clay / concrete tile hues — reds and browns. */
+/** Typical CZ clay tile hues — reds and browns (pitched roofs). */
 export const CZ_ROOF_COLORS = [
   '#a83a2c', // classic brick red
   '#8f2f24', // deep red
@@ -25,6 +25,22 @@ export const CZ_ROOF_COLORS = [
   '#7d3b2f', // muted red-brown
 ] as const
 
+/** Flat / membrane roofs — greys through near-black. */
+export const CZ_FLAT_ROOF_COLORS = [
+  '#6a6a6a',
+  '#5a5a5a',
+  '#4a4a4a',
+  '#3d3d3d',
+  '#555555',
+  '#484848',
+  '#2f2f2f',
+  '#666666',
+  '#525252',
+  '#3a3a3a',
+  '#707070',
+  '#262626',
+] as const
+
 /** Occasional timber gable boarding. */
 export const GABLE_WOOD_COLOR = '#6b4423'
 
@@ -37,10 +53,12 @@ function hash01(id: string): number {
   return (h >>> 0) / 4294967295
 }
 
-/** Stable red/brown roof colour per building. */
-export function roofColorForBuilding(b: Building): string {
-  const i = Math.floor(hash01(b.id) * CZ_ROOF_COLORS.length) % CZ_ROOF_COLORS.length
-  return CZ_ROOF_COLORS[i]
+/** Roof deck colour: grey/black for flat, red/brown for pitched. */
+export function roofColorForBuilding(b: Building, shape?: RoofShape): string {
+  const s = shape ?? roofShapeForBuilding(b)
+  const palette = s === 'flat' ? CZ_FLAT_ROOF_COLORS : CZ_ROOF_COLORS
+  const i = Math.floor(hash01(b.id) * palette.length) % palette.length
+  return palette[i]
 }
 
 /** Gable face: mostly wall colour, ~22% wood boarding. */
