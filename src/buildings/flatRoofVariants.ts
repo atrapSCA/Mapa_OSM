@@ -16,8 +16,19 @@ function hash01(id: string, salt = 0): number {
   return (h >>> 0) / 4294967295
 }
 
+/**
+ * Low buildings (≤6 m) get simple decks only — no elevator rooms / HVAC / dense tech.
+ * Taller blocks may use the full 0–9 set.
+ */
 export function flatRoofVariantForBuilding(b: Building): FlatRoofVariant {
-  return Math.floor(hash01(b.id, 91) * 10) as FlatRoofVariant
+  const h = Math.max(2.5, Math.min(80, b.height))
+  const r = hash01(b.id, 91)
+  if (h <= 6) {
+    // 0 bare · 1 vent row · 2 sparse vents · occasional small solar (5)
+    const simple = [0, 1, 2, 0, 1, 5] as const
+    return simple[Math.floor(r * simple.length) % simple.length] as FlatRoofVariant
+  }
+  return Math.floor(r * 10) as FlatRoofVariant
 }
 
 type OBB = {
