@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
-import type { ThreeEvent } from '@react-three/fiber'
+import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import type {
   BuildingLayerJson,
   ContinuousTerrainJson,
@@ -32,6 +32,24 @@ import {
 } from './windows'
 
 const CLICK_MAX_MOVE_PX = 4
+
+/** Camera distance LOD: 0 near (windows+roof details), ≥1 shells only. */
+function useBuildingLod(): 0 | 1 {
+  const [lod, setLod] = useState<0 | 1>(1)
+  const ref = useRef<0 | 1>(1)
+  useFrame(({ camera }) => {
+    const d = camera.position.length()
+    const cur = ref.current
+    // Hysteresis so zooming across the threshold doesn't thrash rebuilds.
+    let next: 0 | 1 = cur
+    if (cur === 0 && d > 3200) next = 1
+    else if (cur === 1 && d < 2600) next = 0
+    if (next === cur) return
+    ref.current = next
+    setLod(next)
+  })
+  return lod
+}
 
 const highlightMat = new THREE.MeshStandardMaterial({
   color: '#f0e6a8',
@@ -101,6 +119,8 @@ export function BuildingsLayer({
   const selectedId = useSelection((s) => s.selectedId)
   const select = useSelection((s) => s.select)
   void kindEnabled
+  const lod = useBuildingLod()
+  const near = lod === 0
 
   const visible = useMemo(() => {
     return buildings.buildings.filter((b) =>
@@ -108,32 +128,34 @@ export function BuildingsLayer({
     )
   }, [buildings.buildings, isKindOn, kindEnabled])
 
-  const parts = useMemo(() => {
+  /** Walls + simple roofs — stable across zoom; not rebuilt on LOD change. */
+  const shells = useMemo(() => {
     const map = new Map<
       string,
       {
         walls: THREE.BufferGeometry
         roof: THREE.BufferGeometry | null
-        windowsDark: THREE.BufferGeometry | null
-        windowsLit: THREE.BufferGeometry | null
+        yBase: number
+        yEaves: number
+        wallHExag: number
+        shape: ReturnType<typeof roofShapeForBuilding>
       }
     >()
     for (const b of visible) {
       const shape = roofShapeForBuilding(b)
       const riseM = roofRiseMeters(b, shape, exaggeration)
       const fullH = Math.max(2.5, Math.min(80, b.height))
-      // Full-height walls; pitched roof is a hat seated on the measured wall top
-      // (avoids floating roofs from eaves-height mismatches).
       const walls = buildingGeometry(
         b,
         terrain,
         exaggeration,
         fullH,
-        true, // drop extruded caps — roof mesh replaces them
+        true,
       )
       if (!walls) continue
 
       const yEaves = geometryMaxY(walls) - 0.02
+      const yBase = buildingBaseY(b, terrain, exaggeration)
       const roof = createRoofGeometry(
         b.rings[0],
         yEaves,
@@ -141,19 +163,58 @@ export function BuildingsLayer({
         riseM * exaggeration,
         b,
         exaggeration,
+        false,
       )
-      const yBase = buildingBaseY(b, terrain, exaggeration)
-      const wallHExag = yEaves - yBase
-      const wins = createWindowGeometry(b, yBase, wallHExag, shape)
       map.set(b.id, {
         walls,
+        roof,
+        yBase,
+        yEaves,
+        wallHExag: yEaves - yBase,
+        shape,
+      })
+    }
+    return map
+  }, [visible, terrain, exaggeration])
+
+  /** Windows + detailed roofs only when camera is near. */
+  const details = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        roof: THREE.BufferGeometry | null
+        windowsDark: THREE.BufferGeometry | null
+        windowsLit: THREE.BufferGeometry | null
+      }
+    >()
+    if (!near) return map
+    for (const b of visible) {
+      const shell = shells.get(b.id)
+      if (!shell) continue
+      const riseM = roofRiseMeters(b, shell.shape, exaggeration)
+      const roof = createRoofGeometry(
+        b.rings[0],
+        shell.yEaves,
+        shell.shape,
+        riseM * exaggeration,
+        b,
+        exaggeration,
+        true,
+      )
+      const wins = createWindowGeometry(
+        b,
+        shell.yBase,
+        shell.wallHExag,
+        shell.shape,
+      )
+      map.set(b.id, {
         roof,
         windowsDark: wins.dark,
         windowsLit: wins.lit,
       })
     }
     return map
-  }, [visible, terrain, exaggeration])
+  }, [near, visible, shells, exaggeration])
 
   /** Muted CZ façade colours — shared material per hex. */
   const facadeMaterials = useMemo(() => {
@@ -249,14 +310,22 @@ export function BuildingsLayer({
 
   useEffect(() => {
     return () => {
-      for (const p of parts.values()) {
+      for (const p of shells.values()) {
         p.walls.dispose()
+        p.roof?.dispose()
+      }
+    }
+  }, [shells])
+
+  useEffect(() => {
+    return () => {
+      for (const p of details.values()) {
         p.roof?.dispose()
         p.windowsDark?.dispose()
         p.windowsLit?.dispose()
       }
     }
-  }, [parts])
+  }, [details])
 
   useEffect(() => {
     return () => {
@@ -285,8 +354,9 @@ export function BuildingsLayer({
   return (
     <group>
       {visible.map((b) => {
-        const part = parts.get(b.id)
-        if (!part) return null
+        const shell = shells.get(b.id)
+        if (!shell) return null
+        const detail = details.get(b.id)
         const kind = normalizeKind(b.kind)
         const selected = b.id === selectedId
 
@@ -304,13 +374,14 @@ export function BuildingsLayer({
           wallMat = getSkinMaterial(preset.wall, 'wall', facadeColor)
         }
 
-        const shape = roofShapeForBuilding(b)
+        const shape = shell.shape
         const slopeColor = roofColorForBuilding(b, shape)
         const slopeMat =
           roofSlopeMaterials.get(slopeColor) ??
           roofSlopeMaterials.values().next().value!
         const gableMat = gableIsWood(b) ? woodGableMat : wallMat
-        const nGroups = part.roof?.groups.length ?? 0
+        const roofGeom = detail?.roof ?? shell.roof
+        const nGroups = roofGeom?.groups.length ?? 0
         let roofMats: THREE.Material | THREE.Material[] = slopeMat
         if (shape === 'flat' && nGroups >= 2) {
           roofMats =
@@ -327,34 +398,34 @@ export function BuildingsLayer({
           <group key={b.id}>
             <ClickMesh
               buildingId={b.id}
-              geometry={part.walls}
+              geometry={shell.walls}
               materials={wallMat}
               selected={selected}
               onSelect={select}
             />
-            {part.roof && (
+            {roofGeom && (
               <ClickMesh
                 buildingId={b.id}
-                geometry={part.roof}
+                geometry={roofGeom}
                 materials={roofMats}
                 selected={selected}
                 onSelect={select}
               />
             )}
-            {part.windowsDark && (
+            {detail?.windowsDark && (
               <mesh
-                geometry={part.windowsDark}
+                geometry={detail.windowsDark}
                 material={darkWindowMat}
-                frustumCulled={false}
+                frustumCulled
                 castShadow={false}
                 renderOrder={2}
               />
             )}
-            {part.windowsLit && (
+            {detail?.windowsLit && (
               <mesh
-                geometry={part.windowsLit}
+                geometry={detail.windowsLit}
                 material={litWindowMat}
-                frustumCulled={false}
+                frustumCulled
                 castShadow={false}
                 renderOrder={2}
               />

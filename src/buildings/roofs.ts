@@ -517,6 +517,8 @@ export function createRoofGeometry(
   riseExag: number,
   building?: Building,
   verticalExaggeration = 2.2,
+  /** Chimneys / flat-roof clutter — off when camera is far (LOD). */
+  includeDetails = true,
 ): THREE.BufferGeometry | null {
   const ring = openRing(ringIn)
   if (ring.length < 3) return null
@@ -547,7 +549,7 @@ export function createRoofGeometry(
   if (resolved === 'flat') {
     buildFlatRoof(ring, yEaves, positions, indices, push)
     slopeCount = indices.length
-    if (building) {
+    if (building && includeDetails) {
       const parapetIdx: number[] = []
       const detailIdx: number[] = []
       const yDeck = yEaves + 0.04
@@ -597,7 +599,7 @@ export function createRoofGeometry(
     )
     slopeCount = parts.slopeCount
     gableCount = parts.gableCount
-    if (building) {
+    if (building && includeDetails) {
       chimneyCount = appendGabledChimneys(
         building.id,
         obb,
