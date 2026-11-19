@@ -203,6 +203,11 @@ export function createRoofGeometry(
   }
 
   if (indices.length < 3) return null
+
+  // Flip any triangle whose geometric normal points inward / downward
+  // (fixes front faces culled while back faces show through).
+  fixRoofWinding(positions, indices)
+
   const geo = new THREE.BufferGeometry()
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
@@ -211,4 +216,54 @@ export function createRoofGeometry(
   geo.clearGroups()
   geo.addGroup(0, indices.length, 0)
   return geo
+}
+
+/** Ensure each triangle faces outward (away from roof centroid, preferably up). */
+function fixRoofWinding(positions: number[], indices: number[]): void {
+  let cx = 0
+  let cy = 0
+  let cz = 0
+  const nVert = positions.length / 3
+  for (let i = 0; i < nVert; i++) {
+    cx += positions[i * 3]
+    cy += positions[i * 3 + 1]
+    cz += positions[i * 3 + 2]
+  }
+  cx /= nVert
+  cy /= nVert
+  cz /= nVert
+
+  const a = new THREE.Vector3()
+  const b = new THREE.Vector3()
+  const c = new THREE.Vector3()
+  const ab = new THREE.Vector3()
+  const ac = new THREE.Vector3()
+  const normal = new THREE.Vector3()
+  const outward = new THREE.Vector3()
+
+  for (let t = 0; t < indices.length; t += 3) {
+    const i0 = indices[t]
+    const i1 = indices[t + 1]
+    const i2 = indices[t + 2]
+    a.set(positions[i0 * 3], positions[i0 * 3 + 1], positions[i0 * 3 + 2])
+    b.set(positions[i1 * 3], positions[i1 * 3 + 1], positions[i1 * 3 + 2])
+    c.set(positions[i2 * 3], positions[i2 * 3 + 1], positions[i2 * 3 + 2])
+    ab.subVectors(b, a)
+    ac.subVectors(c, a)
+    normal.crossVectors(ab, ac).normalize()
+
+    // Prefer upward; for vertical gables fall back to away-from-centroid
+    const faceCx = (a.x + b.x + c.x) / 3
+    const faceCy = (a.y + b.y + c.y) / 3
+    const faceCz = (a.z + b.z + c.z) / 3
+    outward.set(faceCx - cx, faceCy - cy, faceCz - cz)
+    if (outward.lengthSq() < 1e-8) outward.set(0, 1, 0)
+    else outward.normalize()
+
+    // Roof faces should not point into the building volume
+    if (normal.dot(outward) < 0 || (Math.abs(normal.y) > 0.3 && normal.y < 0)) {
+      indices[t + 1] = i2
+      indices[t + 2] = i1
+    }
+  }
 }
