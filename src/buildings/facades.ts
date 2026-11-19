@@ -2,56 +2,58 @@ import type { Building } from '@shared/tileFormat'
 import { normalizeKind } from '@shared/osmLabels'
 
 /**
- * Soft CZ plaster / paint hues — muted, never neon.
- * Greys, creams, soft yellow, blue, green, ochre, dusty rose.
+ * CZ plaster / paint — a bit livelier pastels (not neon).
+ * Fewer greys; more yellow, blue, green, peach.
  */
 export const CZ_FACADE_COLORS = [
-  // greys / off-white
-  '#d8d4ce',
-  '#c9c5bf',
-  '#b8b4ae',
-  '#a8a49e',
-  '#e4e0da',
-  '#d0ccc4',
-  // cream / warm white
-  '#e8e0d0',
-  '#ddd4c4',
-  '#d4cbb8',
-  // soft yellow / ochre
-  '#e6d9a8',
-  '#dccfa0',
-  '#d4c090',
-  '#cbb888',
-  // soft peach / dusty rose
-  '#e0cfc4',
-  '#d8c4b8',
-  '#d0b8b0',
-  // soft green
-  '#c5d0c0',
-  '#b8c8b4',
-  '#c0cbb0',
-  '#a8b8a4',
-  // soft blue / grey-blue
-  '#c0ccd8',
-  '#b4c4d0',
-  '#c8d0d8',
-  '#a8b8c4',
-  // soft sage / teal-grey
-  '#b8c8c4',
-  '#c0d0cc',
+  // light neutrals (few)
+  '#ebe4d6',
+  '#e2d8c8',
+  '#d6cfc4',
+  // yellow / ochre — clearer
+  '#f0e09a',
+  '#e8d078',
+  '#e0c86a',
+  '#d4b85c',
+  '#f2e8b0',
+  // peach / salmon
+  '#efcfc0',
+  '#e8b8a8',
+  '#e0a898',
+  '#f0d8d0',
+  // green
+  '#b8d4a8',
+  '#a8c898',
+  '#98c090',
+  '#c4dcb0',
+  '#a0c8a0',
+  // blue / grey-blue
+  '#a8c4e0',
+  '#98b8d8',
+  '#b0cce8',
+  '#90b0d0',
+  '#c0d4e8',
+  // mint / sage
+  '#a8d4c8',
+  '#98c8bc',
+  '#b8ddd0',
+  // soft lilac / dusty rose
+  '#dcc8d4',
+  '#e8c8c8',
 ] as const
 
-/** Industrial / garage — only quiet greys. */
+/** Industrial / garage — mostly grey (quiet concrete / metal). */
 const CZ_FACADE_GREYS = [
-  '#c8c4be',
+  '#c4c0ba',
+  '#b4b0aa',
+  '#a4a09a',
+  '#949088',
+  '#888480',
   '#b8b4ae',
-  '#a8a49e',
-  '#9a9690',
   '#d0ccc6',
-  '#bcb8b2',
 ] as const
 
-/** Stone-ish for churches / public. */
+/** Stone-ish for churches. */
 const CZ_FACADE_STONE = [
   '#d4ccc0',
   '#c8c0b4',
@@ -69,17 +71,19 @@ function hash01(id: string): number {
   return (h >>> 0) / 4294967295
 }
 
-/** Stable muted façade colour per building. */
+/** Façade colour: industrial grey; others livelier pastels. */
 export function facadeColorForBuilding(b: Building): string {
   const kind = normalizeKind(b.kind)
   const h = hash01(b.id)
 
   let palette: readonly string[] = CZ_FACADE_COLORS
-  if (kind === 'industrial' || kind === 'garage') palette = CZ_FACADE_GREYS
-  else if (kind === 'church') palette = CZ_FACADE_STONE
-  else if (kind === 'apartments') {
-    // Paneláky: mostly grey/cream, occasional soft tint
-    palette = h < 0.55 ? CZ_FACADE_GREYS : CZ_FACADE_COLORS
+  if (kind === 'industrial' || kind === 'garage') {
+    palette = CZ_FACADE_GREYS
+  } else if (kind === 'church') {
+    palette = CZ_FACADE_STONE
+  } else if (kind === 'apartments') {
+    // Mostly tinted; only occasional grey panelák
+    palette = h < 0.22 ? CZ_FACADE_GREYS : CZ_FACADE_COLORS
   }
 
   const i = Math.floor(hash01(b.id + ':facade') * palette.length) % palette.length
