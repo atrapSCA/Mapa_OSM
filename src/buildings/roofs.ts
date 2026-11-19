@@ -9,6 +9,25 @@ export type RoofShape = 'flat' | 'gabled' | 'pyramidal' | 'skillion'
 /** Eaves overhang beyond wall footprint (metres). */
 const EAVES_OVERHANG_M = 0.3
 
+/** Typical CZ clay / concrete tile hues — reds and browns. */
+export const CZ_ROOF_COLORS = [
+  '#a83a2c', // classic brick red
+  '#8f2f24', // deep red
+  '#b54a32', // terracotta
+  '#9c4030', // brick
+  '#7a3224', // dark red-brown
+  '#8b4a2b', // brown tile
+  '#6e3a28', // dark brown
+  '#a0522d', // sienna
+  '#c45c3e', // lighter terracotta
+  '#5c3320', // chocolate
+  '#914d36', // rust brown
+  '#7d3b2f', // muted red-brown
+] as const
+
+/** Occasional timber gable boarding. */
+export const GABLE_WOOD_COLOR = '#6b4423'
+
 function hash01(id: string): number {
   let h = 2166136261
   for (let i = 0; i < id.length; i++) {
@@ -16,6 +35,17 @@ function hash01(id: string): number {
     h = Math.imul(h, 16777619)
   }
   return (h >>> 0) / 4294967295
+}
+
+/** Stable red/brown roof colour per building. */
+export function roofColorForBuilding(b: Building): string {
+  const i = Math.floor(hash01(b.id) * CZ_ROOF_COLORS.length) % CZ_ROOF_COLORS.length
+  return CZ_ROOF_COLORS[i]
+}
+
+/** Gable face: mostly wall colour, ~22% wood boarding. */
+export function gableIsWood(b: Building): boolean {
+  return hash01(b.id + ':gable') < 0.22
 }
 
 type FootprintMetrics = {
@@ -254,7 +284,11 @@ function pushTri(
   else indices.push(i0, i1, i2)
 }
 
-/** Full gabled roof on oriented bbox — both slopes + gable ends. */
+/**
+ * Full gabled roof on oriented bbox.
+ * Slope triangles first (mat 0), then gable ends (mat 1).
+ * Returns index counts for multi-material groups.
+ */
 function buildGabledOBB(
   obb: OBB,
   yEaves: number,
@@ -262,7 +296,7 @@ function buildGabledOBB(
   positions: number[],
   indices: number[],
   push: (x: number, y: number, z: number) => number,
-): void {
+): { slopeCount: number; gableCount: number } {
   const { halfU, halfV, cx, cz, ux, uz, vx, vz, corners } = obb
   const [p0, p1, p2, p3] = corners
   const yR = yEaves + riseExag
@@ -270,27 +304,36 @@ function buildGabledOBB(
   const b = push(p1[0], yEaves, p1[1])
   const c = push(p2[0], yEaves, p2[1])
   const d = push(p3[0], yEaves, p3[1])
+  const before = indices.length
 
   if (halfU >= halfV) {
     const r0 = push(cx - halfU * ux, yR, cz - halfU * uz)
     const r1 = push(cx + halfU * ux, yR, cz + halfU * uz)
-    // Both slopes (outward = up)
     pushTri(positions, indices, a, b, r1, 0, 1, 0)
     pushTri(positions, indices, a, r1, r0, 0, 1, 0)
     pushTri(positions, indices, d, r0, r1, 0, 1, 0)
     pushTri(positions, indices, d, r1, c, 0, 1, 0)
-    // Gable ends
+    const afterSlopes = indices.length
     pushTri(positions, indices, a, r0, d, -ux, 0, -uz)
     pushTri(positions, indices, b, c, r1, ux, 0, uz)
-  } else {
-    const r0 = push(cx - halfV * vx, yR, cz - halfV * vz)
-    const r1 = push(cx + halfV * vx, yR, cz + halfV * vz)
-    pushTri(positions, indices, a, r0, r1, 0, 1, 0)
-    pushTri(positions, indices, a, r1, d, 0, 1, 0)
-    pushTri(positions, indices, b, c, r1, 0, 1, 0)
-    pushTri(positions, indices, b, r1, r0, 0, 1, 0)
-    pushTri(positions, indices, a, b, r0, -vx, 0, -vz)
-    pushTri(positions, indices, d, r1, c, vx, 0, vz)
+    return {
+      slopeCount: afterSlopes - before,
+      gableCount: indices.length - afterSlopes,
+    }
+  }
+
+  const r0 = push(cx - halfV * vx, yR, cz - halfV * vz)
+  const r1 = push(cx + halfV * vx, yR, cz + halfV * vz)
+  pushTri(positions, indices, a, r0, r1, 0, 1, 0)
+  pushTri(positions, indices, a, r1, d, 0, 1, 0)
+  pushTri(positions, indices, b, c, r1, 0, 1, 0)
+  pushTri(positions, indices, b, r1, r0, 0, 1, 0)
+  const afterSlopes = indices.length
+  pushTri(positions, indices, a, b, r0, -vx, 0, -vz)
+  pushTri(positions, indices, d, r1, c, vx, 0, vz)
+  return {
+    slopeCount: afterSlopes - before,
+    gableCount: indices.length - afterSlopes,
   }
 }
 
@@ -348,8 +391,12 @@ export function createRoofGeometry(
   if (shape === 'pyramidal' && !metrics.squarish) resolved = 'flat'
   if (shape === 'gabled' && metrics.fill < 0.68) resolved = 'flat'
 
+  let slopeCount = 0
+  let gableCount = 0
+
   if (resolved === 'flat') {
     buildFlatRoof(ring, yEaves, positions, indices, push)
+    slopeCount = indices.length
   } else if (resolved === 'pyramidal') {
     const [cx, cz] = footprintCentroid(ringIn)
     const apex = push(cx, yEaves + riseExag, cz)
@@ -368,8 +415,9 @@ export function createRoofGeometry(
       const mz = (positions[i0 * 3 + 2] + positions[i1 * 3 + 2]) / 2 - cz
       pushTri(positions, indices, i0, i1, apex, mx, 0.35, mz)
     }
+    slopeCount = indices.length
   } else if (resolved === 'gabled') {
-    buildGabledOBB(
+    const parts = buildGabledOBB(
       footprintOBB(ring, EAVES_OVERHANG_M),
       yEaves,
       riseExag,
@@ -377,6 +425,8 @@ export function createRoofGeometry(
       indices,
       push,
     )
+    slopeCount = parts.slopeCount
+    gableCount = parts.gableCount
   } else {
     // skillion — sheds only
     const { halfU, halfV, corners } = footprintOBB(ring, EAVES_OVERHANG_M)
@@ -397,6 +447,7 @@ export function createRoofGeometry(
       pushTri(positions, indices, a, b, c, 0, 1, 0)
       pushTri(positions, indices, a, c, d, 0, 1, 0)
     }
+    slopeCount = indices.length
   }
 
   if (indices.length < 3) return null
@@ -407,6 +458,8 @@ export function createRoofGeometry(
   geo.setIndex(indices)
   geo.computeVertexNormals()
   geo.clearGroups()
-  geo.addGroup(0, indices.length, 0)
+  // mat 0 = slopes / flat deck; mat 1 = gable ends (wall or wood)
+  geo.addGroup(0, slopeCount, 0)
+  if (gableCount > 0) geo.addGroup(slopeCount, gableCount, 1)
   return geo
 }

@@ -12,6 +12,9 @@ import { buildingBaseY, buildingGeometry, geometryMaxY } from './buildingGeom'
 import { BuildingBubble } from './BuildingBubble'
 import {
   createRoofGeometry,
+  GABLE_WOOD_COLOR,
+  gableIsWood,
+  roofColorForBuilding,
   roofRiseMeters,
   roofShapeForBuilding,
 } from './roofs'
@@ -164,36 +167,38 @@ export function BuildingsLayer({
     return map
   }, [visible])
 
-  /** Contrasting roof colours when skins off — slopes must read clearly. */
-  const flatRoofMaterials = useMemo(() => {
-    const roofColors: Record<string, string> = {
-      house: '#8b3a2a',
-      apartments: '#6a5a52',
-      building: '#7a4a3a',
-      commercial: '#5a5850',
-      industrial: '#4a5058',
-      church: '#5a4038',
-      public: '#6a5848',
-      garage: '#555860',
-      farm: '#6a4028',
-    }
+  /** CZ red/brown roof tiles — one shared material per colour hex. */
+  const roofSlopeMaterials = useMemo(() => {
     const map = new Map<string, THREE.MeshStandardMaterial>()
-    for (const b of visible) {
-      const k = normalizeKind(b.kind)
-      if (map.has(k)) continue
-      map.set(
-        k,
-        new THREE.MeshStandardMaterial({
-          color: roofColors[k] ?? '#6a4030',
+    const get = (color: string) => {
+      let m = map.get(color)
+      if (!m) {
+        m = new THREE.MeshStandardMaterial({
+          color,
           flatShading: true,
           roughness: 0.92,
           metalness: 0.05,
           side: THREE.DoubleSide,
-        }),
-      )
+        })
+        map.set(color, m)
+      }
+      return m
     }
+    for (const b of visible) get(roofColorForBuilding(b))
     return map
   }, [visible])
+
+  const woodGableMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: GABLE_WOOD_COLOR,
+        flatShading: true,
+        roughness: 0.88,
+        metalness: 0.04,
+        side: THREE.DoubleSide,
+      }),
+    [],
+  )
 
   const windowMat = useMemo(() => getWindowMaterial(), [])
 
@@ -210,9 +215,10 @@ export function BuildingsLayer({
   useEffect(() => {
     return () => {
       for (const m of flatMaterials.values()) m.dispose()
-      for (const m of flatRoofMaterials.values()) m.dispose()
+      for (const m of roofSlopeMaterials.values()) m.dispose()
+      woodGableMat.dispose()
     }
-  }, [flatMaterials, flatRoofMaterials])
+  }, [flatMaterials, roofSlopeMaterials, woodGableMat])
 
   if (!show) return null
 
@@ -229,15 +235,23 @@ export function BuildingsLayer({
         const selected = b.id === selectedId
 
         let wallMat: THREE.Material
-        let roofMat: THREE.Material
         if (skinsOn) {
           const preset = presetForKind(kind)
           wallMat = getSkinMaterial(preset.wall, 'wall')
-          roofMat = getSkinMaterial(preset.roof, 'roof')
         } else {
           wallMat = flatMaterials.get(kind)!
-          roofMat = flatRoofMaterials.get(kind)!
         }
+
+        const slopeColor = roofColorForBuilding(b)
+        const slopeMat =
+          roofSlopeMaterials.get(slopeColor) ??
+          roofSlopeMaterials.values().next().value!
+        // When skins on, still use CZ colour variety (tint over plain); gable = wall or wood
+        const gableMat = gableIsWood(b) ? woodGableMat : wallMat
+        const roofMats: THREE.Material | THREE.Material[] =
+          part.roof && part.roof.groups.length > 1
+            ? [slopeMat, gableMat]
+            : slopeMat
 
         return (
           <group key={b.id}>
@@ -252,7 +266,7 @@ export function BuildingsLayer({
               <ClickMesh
                 buildingId={b.id}
                 geometry={part.roof}
-                materials={roofMat}
+                materials={roofMats}
                 selected={selected}
                 onSelect={select}
               />
