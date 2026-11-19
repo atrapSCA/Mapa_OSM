@@ -85,18 +85,26 @@ export function createWindowGeometry(
 
   const winW = kind === 'apartments' ? 1.35 : 1.1
   const winH = kind === 'apartments' ? 1.4 : 1.2
-  const rows = Math.max(1, storeysForWindows(b.height, roofShape))
+  const storeys = Math.max(1, storeysForWindows(b.height, roofShape))
+  // Fewer window rows on tall façades (every other floor) — big draw/CPU win.
+  const rowStep = storeys >= 5 ? 2 : 1
+  const rows = Math.ceil(storeys / rowStep)
   // Daytime: only a small share glowing
   const litChance = kind === 'industrial' ? 0.06 : 0.12
 
   const pitched = roofShape === 'gabled' || roofShape === 'pyramidal'
   const topMargin = wallHExag * (pitched ? 0.14 : 0.06)
   const usableH = Math.max(0.8, wallHExag - topMargin)
-  const rowPitch = usableH / rows
+  const rowPitch = usableH / storeys
   const exag = wallHExag / Math.max(2.5, Math.min(80, b.height))
-  const winHEx = Math.min(Math.max(winH * exag, rowPitch * 0.35), rowPitch * 0.62)
+  const winHEx = Math.min(
+    Math.max(winH * exag, rowPitch * 0.35),
+    rowPitch * 0.62,
+  )
   const sill0 = Math.min(0.9 * exag, rowPitch * 0.2)
   const outset = 0.22
+  // Wider horizontal spacing ≈ 40–50% fewer quads per façade.
+  const colPitch = kind === 'apartments' ? winW * 2.55 : winW * 2.35
 
   let cx = 0
   let cz = 0
@@ -114,7 +122,7 @@ export function createWindowGeometry(
     const dx = c[0] - a[0]
     const dz = c[1] - a[1]
     const len = Math.hypot(dx, dz)
-    if (len < winW * 1.6) continue
+    if (len < winW * 2.1) continue
 
     let nx = -dz / len
     let nz = dx / len
@@ -125,13 +133,14 @@ export function createWindowGeometry(
       nz = -nz
     }
 
-    const margin = Math.min(winW * 0.55, len * 0.12)
+    const margin = Math.min(winW * 0.7, len * 0.14)
     const usable = len - 2 * margin
-    if (usable < winW * 0.85) continue
-    const count = Math.max(1, Math.floor(usable / (winW * 1.45)))
+    if (usable < winW * 0.9) continue
+    const count = Math.max(1, Math.floor(usable / colPitch))
 
     for (let i = 0; i < count; i++) {
-      for (let f = 0; f < rows; f++) {
+      for (let r = 0; r < rows; r++) {
+        const f = r * rowStep
         salt++
         const lit = hash01(b.id, salt) < litChance
 

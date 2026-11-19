@@ -89,20 +89,61 @@ function hash01(id: string): number {
   return (h >>> 0) / 4294967295
 }
 
+function parseHex(hex: string): [number, number, number] {
+  const h = hex.replace('#', '')
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ]
+}
+
+function toHex(r: number, g: number, b: number): string {
+  const c = (n: number) =>
+    Math.max(0, Math.min(255, Math.round(n)))
+      .toString(16)
+      .padStart(2, '0')
+  return `#${c(r)}${c(g)}${c(b)}`
+}
+
+/**
+ * Soften fresh pastels toward dusty plaster so façades read lived-in.
+ * Same hue family — just muted / slightly greyed, not a new palette.
+ */
+function weatherFacade(hex: string, amount: number): string {
+  const [r, g, b] = parseHex(hex)
+  // Warm dusty grey (aged render / city dust)
+  const dr = 158
+  const dg = 152
+  const db = 142
+  // Mild darkening so whites aren't chalk-new
+  const shade = 0.94
+  const nr = (r * shade + (dr - r * shade) * amount)
+  const ng = (g * shade + (dg - g * shade) * amount)
+  const nb = (b * shade + (db - b * shade) * amount)
+  return toHex(nr, ng, nb)
+}
+
 /** Warm pastel façades; industrial stays grey. */
 export function facadeColorForBuilding(b: Building): string {
   const kind = normalizeKind(b.kind)
 
   let palette: readonly string[] = CZ_FACADE_COLORS
+  let weather = 0.26
   if (kind === 'industrial' || kind === 'garage') {
     palette = CZ_FACADE_GREYS
+    weather = 0.12 // already grey — only a light film
   } else if (kind === 'church') {
     palette = CZ_FACADE_STONE
+    weather = 0.2
   } else if (kind === 'apartments') {
     palette = CZ_FACADE_PANEL
+    weather = 0.24
   }
   // commercial / public / house / building → lively town palette
 
   const i = Math.floor(hash01(b.id + ':facade') * palette.length) % palette.length
-  return palette[i]
+  // Per-building wear so the town doesn't look uniformly washed
+  const amount = weather + hash01(b.id + ':age') * 0.12
+  return weatherFacade(palette[i], amount)
 }

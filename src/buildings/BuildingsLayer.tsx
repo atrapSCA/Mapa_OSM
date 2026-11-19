@@ -225,8 +225,8 @@ export function BuildingsLayer({
         m = new THREE.MeshStandardMaterial({
           color,
           flatShading: true,
-          roughness: 0.88,
-          metalness: 0.04,
+          roughness: 0.94,
+          metalness: 0.02,
         })
         map.set(color, m)
       }

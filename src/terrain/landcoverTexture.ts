@@ -44,11 +44,15 @@ function drawRing(
   ctx.closePath()
 }
 
-/** Outer filled, holes cut with destination-out (reliable vs evenodd). */
+/**
+ * Outer filled; holes painted with `holeFill` (terrain base).
+ * Do NOT use destination-out — with alpha:false that leaves opaque black flecks.
+ */
 function drawPoly(
   ctx: CanvasRenderingContext2D,
   rings: [number, number][][],
   color: string,
+  holeFill: string,
   minX: number,
   spanX: number,
   minZ: number,
@@ -64,15 +68,19 @@ function drawPoly(
   ctx.fill('nonzero')
 
   if (rings.length < 2) return
+  // Clip to outer so misplaced multipolygon inners can't erase neighbours.
   ctx.save()
-  ctx.globalCompositeOperation = 'destination-out'
   ctx.beginPath()
+  drawRing(ctx, outer, minX, spanX, minZ, spanZ, size)
+  ctx.clip()
+  ctx.fillStyle = holeFill
   for (let r = 1; r < rings.length; r++) {
     const hole = rings[r]
     if (!hole || hole.length < 3) continue
+    ctx.beginPath()
     drawRing(ctx, hole, minX, spanX, minZ, spanZ, size)
+    ctx.fill('nonzero')
   }
-  ctx.fill('nonzero')
   ctx.restore()
 }
 
@@ -124,10 +132,10 @@ export function buildLandcoverTexture(
   ctx.fillRect(0, 0, size, size)
 
   for (const p of nature) {
-    drawPoly(ctx, p.rings, p.color, minX, spanX, minZ, spanZ, size)
+    drawPoly(ctx, p.rings, p.color, base, minX, spanX, minZ, spanZ, size)
   }
   for (const p of water) {
-    drawPoly(ctx, p.rings, p.color, minX, spanX, minZ, spanZ, size)
+    drawPoly(ctx, p.rings, p.color, base, minX, spanX, minZ, spanZ, size)
   }
 
   const tex = new THREE.CanvasTexture(canvas)
