@@ -2,6 +2,9 @@ import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Sky, Grid } from '@react-three/drei'
 import type { LoadedRegion } from '@/hooks/useRegionManifest'
 import { TerrainMesh } from '@/terrain/TerrainTiles'
+import { NatureLayer } from '@/nature/NatureLayer'
+import { WaterLayer } from '@/water/WaterLayer'
+import { RoadsLayer } from '@/roads/RoadsLayer'
 import { useLayers } from '@/store/layers'
 import { PlaceholderLayers } from './PlaceholderLayers'
 
@@ -68,6 +71,15 @@ export function Scene({ region }: { region: LoadedRegion }) {
       <Lights />
       <Helpers />
       <TerrainMesh terrain={region.terrain} />
+      {region.nature && (
+        <NatureLayer nature={region.nature} terrain={region.terrain} />
+      )}
+      {region.water && (
+        <WaterLayer water={region.water} terrain={region.terrain} />
+      )}
+      {region.roads && (
+        <RoadsLayer roads={region.roads} terrain={region.terrain} />
+      )}
       <PlaceholderLayers />
       <OrbitControls
         target={[0, midElev * 0.4, 0]}

@@ -9,7 +9,12 @@ export function App() {
 
   return (
     <div className="app">
-      <SidePanel manifest={data?.manifest ?? null} />
+      <SidePanel
+        manifest={data?.manifest ?? null}
+        water={data?.water ?? null}
+        roads={data?.roads ?? null}
+        nature={data?.nature ?? null}
+      />
       <main className="viewport">
         {loading && <div className="loading">Načítám terén Rakovník…</div>}
         {error && (

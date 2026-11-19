@@ -86,6 +86,53 @@ body,
   gap: 0.35rem;
 }
 
+.toggle-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sub-heading {
+  margin: 0.25rem 0 0.1rem 0.55rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sub-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-left: 0.55rem;
+  padding-left: 0.55rem;
+  border-left: 2px solid var(--panel-border);
+}
+
+.toggle.sub {
+  padding: 0.4rem 0.55rem;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.toggle.sub .toggle-label strong {
+  font-size: 0.8rem;
+}
+
+.toggle.sub .switch {
+  width: 30px;
+  height: 17px;
+}
+
+.toggle.sub .switch::after {
+  width: 13px;
+  height: 13px;
+}
+
+.toggle.sub.on .switch::after {
+  transform: translateX(13px);
+}
+
 .toggle {
   display: grid;
   grid-template-columns: 1fr auto;

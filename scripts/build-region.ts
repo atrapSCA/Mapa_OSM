@@ -10,6 +10,7 @@
  */
 
 import path from 'node:path'
+import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import {
   REGIONS,
@@ -28,6 +29,9 @@ import type {
   RegionManifest,
 } from '../shared/tileFormat.ts'
 import { loadOrFetchDem, sampleHeight, writeJson } from './dem.ts'
+import { buildWaterLayer } from './osm-water.ts'
+import { buildRoadLayer } from './osm-roads.ts'
+import { buildNatureLayer } from './osm-nature.ts'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const DATA = path.join(ROOT, 'data')
@@ -207,6 +211,81 @@ async function main() {
   await writeJson(path.join(outDir, continuousRel), continuous)
   await writeJson(path.join(publicMirror, continuousRel), continuous)
 
+  const skipOsm = process.argv.includes('--terrain-only')
+  const waterRel = 'osm/water.json'
+  const roadsRel = 'osm/roads.json'
+  const natureRel = 'osm/nature.json'
+
+  let waterStats = { waterwayCount: 0, polygonCount: 0 }
+  let roadsStats = { roadCount: 0, pathCount: 0 }
+  let natureCount = 0
+
+  if (skipOsm) {
+    console.log('Skipping OSM (--terrain-only); keeping existing water/roads/nature')
+    try {
+      const prev = JSON.parse(
+        await readFile(path.join(publicMirror, 'manifest.json'), 'utf8'),
+      ) as RegionManifest
+      waterStats = {
+        waterwayCount: prev.stats.waterways ?? 0,
+        polygonCount: prev.stats.waterPolygons ?? 0,
+      }
+      roadsStats = {
+        roadCount: prev.stats.roads ?? 0,
+        pathCount: prev.stats.paths ?? 0,
+      }
+      natureCount = prev.stats.nature ?? 0
+    } catch {
+      /* first run without OSM stats */
+    }
+  } else {
+    console.log('Building OSM water layer…')
+    const water = await buildWaterLayer({
+      bbox,
+      originLon: cfg.lon,
+      originLat: cfg.lat,
+      rawDir,
+    })
+    await writeJson(path.join(outDir, waterRel), water)
+    await writeJson(path.join(publicMirror, waterRel), water)
+    waterStats = water.stats
+    console.log(
+      `Water: ${water.stats.waterwayCount} toky, ${water.stats.polygonCount} plochy`,
+    )
+
+    console.log('Building OSM roads layer…')
+    const roads = await buildRoadLayer({
+      bbox,
+      originLon: cfg.lon,
+      originLat: cfg.lat,
+      rawDir,
+    })
+    await writeJson(path.join(outDir, roadsRel), roads)
+    await writeJson(path.join(publicMirror, roadsRel), roads)
+    roadsStats = roads.stats
+    console.log(
+      `Roads: ${roads.stats.roadCount} silnic, ${roads.stats.pathCount} stezek/chodníků`,
+    )
+
+    console.log('Building OSM nature layer…')
+    const nature = await buildNatureLayer({
+      bbox,
+      originLon: cfg.lon,
+      originLat: cfg.lat,
+      rawDir,
+    })
+    await writeJson(path.join(outDir, natureRel), nature)
+    await writeJson(path.join(publicMirror, natureRel), nature)
+    natureCount = nature.stats.polygonCount
+    console.log(
+      `Nature: ${nature.stats.polygonCount} ploch (${Object.entries(
+        nature.stats.byKind,
+      )
+        .map(([k, n]) => `${k}:${n}`)
+        .join(', ')})`,
+    )
+  }
+
   const manifest: RegionManifest = {
     format: 'mapa-osm-manifest-v1',
     regionId: cfg.id,
@@ -217,6 +296,9 @@ async function main() {
     meshResolution: cfg.meshResolution,
     verticalExaggeration: cfg.verticalExaggeration,
     continuousPath: continuousRel,
+    waterPath: waterRel,
+    roadsPath: roadsRel,
+    naturePath: natureRel,
     tiles: manifestTiles,
     generatedAt: new Date().toISOString(),
     stats: {
@@ -224,6 +306,11 @@ async function main() {
       minElev: continuous.minElev,
       maxElev: continuous.maxElev,
       grid: `${continuous.resolutionX}×${continuous.resolutionZ}`,
+      waterways: waterStats.waterwayCount,
+      waterPolygons: waterStats.polygonCount,
+      roads: roadsStats.roadCount,
+      paths: roadsStats.pathCount,
+      nature: natureCount,
     },
   }
 

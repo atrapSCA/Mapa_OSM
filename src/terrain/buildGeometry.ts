@@ -2,6 +2,10 @@ import * as THREE from 'three'
 import type { ContinuousTerrainJson } from '@shared/tileFormat'
 import { lonLatToLocalMeters } from '@shared/geo'
 
+/**
+ * Continuous DEM mesh. Nature/water areas are separate draped layers
+ * (same smooth OSM outlines) — not painted onto this grid.
+ */
 export function continuousTerrainToGeometry(
   terrain: ContinuousTerrainJson,
   verticalExaggeration: number,
@@ -37,12 +41,9 @@ export function continuousTerrainToGeometry(
 
       if (useHypsometric && terrain.colors?.[i]) {
         const hex = terrain.colors[i]
-        const r = parseInt(hex.slice(1, 3), 16) / 255
-        const g = parseInt(hex.slice(3, 5), 16) / 255
-        const b = parseInt(hex.slice(5, 7), 16) / 255
-        colors[o] = r
-        colors[o + 1] = g
-        colors[o + 2] = b
+        colors[o] = parseInt(hex.slice(1, 3), 16) / 255
+        colors[o + 1] = parseInt(hex.slice(3, 5), 16) / 255
+        colors[o + 2] = parseInt(hex.slice(5, 7), 16) / 255
       } else {
         colors[o] = 0.55
         colors[o + 1] = 0.62

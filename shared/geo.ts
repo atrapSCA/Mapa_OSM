@@ -84,8 +84,8 @@ export const REGIONS = {
     sizeMeters: 10_000,
     /** Terrain tile zoom — ~2–3 km/tile at lat 50. */
     zoom: 13,
-    /** Continuous mesh cells across the region (~100 m → low-poly). */
-    meshResolution: 100,
+    /** Continuous mesh cells across the region (~30 m; nature subdivides further). */
+    meshResolution: 320,
     verticalExaggeration: 2.2,
   },
 } as const

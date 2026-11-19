@@ -58,6 +58,92 @@ export type ContinuousTerrainJson = {
   maxElev: number
 }
 
+export type Waterway = {
+  id: string
+  name?: string
+  kind: 'river' | 'stream' | 'canal' | 'drain' | 'ditch' | string
+  /** Ribbon width in meters. */
+  width: number
+  /** Local meters [x, z] polyline. */
+  points: [number, number][]
+}
+
+export type WaterPolygon = {
+  id: string
+  name?: string
+  kind: 'water' | 'reservoir' | 'basin' | string
+  /** rings[0] = outer, rest = holes; each ring is [x,z][] in local meters. */
+  rings: [number, number][][]
+}
+
+export type WaterLayerJson = {
+  format: 'mapa-osm-water-v1'
+  origin: { lon: number; lat: number }
+  bbox: {
+    west: number
+    south: number
+    east: number
+    north: number
+  }
+  waterways: Waterway[]
+  polygons: WaterPolygon[]
+  stats: {
+    waterwayCount: number
+    polygonCount: number
+  }
+}
+
+export type RoadSegment = {
+  id: string
+  name?: string
+  kind: string
+  group: 'road' | 'path'
+  width: number
+  /** Local meters [x, z] polyline. */
+  points: [number, number][]
+}
+
+export type RoadLayerJson = {
+  format: 'mapa-osm-roads-v1'
+  origin: { lon: number; lat: number }
+  bbox: {
+    west: number
+    south: number
+    east: number
+    north: number
+  }
+  roads: RoadSegment[]
+  paths: RoadSegment[]
+  stats: {
+    roadCount: number
+    pathCount: number
+  }
+}
+
+export type NaturePolygon = {
+  id: string
+  name?: string
+  kind: string
+  /** rings[0] = outer, rest = holes; local meters [x,z] */
+  rings: [number, number][][]
+}
+
+export type NatureLayerJson = {
+  format: 'mapa-osm-nature-v1'
+  origin: { lon: number; lat: number }
+  bbox: {
+    west: number
+    south: number
+    east: number
+    north: number
+  }
+  polygons: NaturePolygon[]
+  stats: {
+    polygonCount: number
+    byKind: Record<string, number>
+  }
+}
+
 export type RegionManifest = {
   format: 'mapa-osm-manifest-v1'
   regionId: string
@@ -74,6 +160,9 @@ export type RegionManifest = {
   verticalExaggeration: number
   /** Preferred seamless mesh for local regions. */
   continuousPath?: string
+  waterPath?: string
+  roadsPath?: string
+  naturePath?: string
   tiles: { z: number; x: number; y: number; path: string }[]
   generatedAt: string
   stats: {
@@ -81,5 +170,10 @@ export type RegionManifest = {
     minElev: number
     maxElev: number
     grid?: string
+    waterways?: number
+    waterPolygons?: number
+    roads?: number
+    paths?: number
+    nature?: number
   }
 }
