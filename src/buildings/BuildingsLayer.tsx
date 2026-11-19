@@ -4,7 +4,6 @@ import type { ThreeEvent } from '@react-three/fiber'
 import type {
   BuildingLayerJson,
   ContinuousTerrainJson,
-  RoadLayerJson,
 } from '@shared/tileFormat'
 import { normalizeKind } from '@shared/osmLabels'
 import { useLayers } from '@/store/layers'
@@ -26,13 +25,7 @@ import {
 } from './roofs'
 import { facadeColorForBuilding } from './facades'
 import { getSkinMaterial, presetForKind } from './skins'
-import {
-  createGarageDoorGeometry,
-  createWindowGeometry,
-  getGarageDoorMaterial,
-  getWindowMaterial,
-  RoadProximityIndex,
-} from './windows'
+import { createWindowGeometry, getWindowMaterial } from './windows'
 
 const CLICK_MAX_MOVE_PX = 4
 
@@ -92,11 +85,9 @@ function ClickMesh({
 export function BuildingsLayer({
   buildings,
   terrain,
-  roads,
 }: {
   buildings: BuildingLayerJson
   terrain: ContinuousTerrainJson
-  roads?: RoadLayerJson | null
 }) {
   const show = useLayers((s) => s.buildings)
   const skinsOn = useLayers((s) => s.buildingSkins)
@@ -113,11 +104,6 @@ export function BuildingsLayer({
     )
   }, [buildings.buildings, isKindOn, kindEnabled])
 
-  const roadIndex = useMemo(
-    () => new RoadProximityIndex(roads?.roads ?? null),
-    [roads],
-  )
-
   const parts = useMemo(() => {
     const map = new Map<
       string,
@@ -125,7 +111,6 @@ export function BuildingsLayer({
         walls: THREE.BufferGeometry
         roof: THREE.BufferGeometry | null
         windows: THREE.BufferGeometry | null
-        garageDoor: THREE.BufferGeometry | null
       }
     >()
     for (const b of visible) {
@@ -154,23 +139,11 @@ export function BuildingsLayer({
       )
       const yBase = buildingBaseY(b, terrain, exaggeration)
       const wallHExag = yEaves - yBase
-      const windows = createWindowGeometry(
-        b,
-        yBase,
-        wallHExag,
-        shape,
-        roadIndex,
-      )
-      const garageDoor = createGarageDoorGeometry(
-        b,
-        yBase,
-        wallHExag,
-        roadIndex,
-      )
-      map.set(b.id, { walls, roof, windows, garageDoor })
+      const windows = createWindowGeometry(b, yBase, wallHExag, shape)
+      map.set(b.id, { walls, roof, windows })
     }
     return map
-  }, [visible, terrain, exaggeration, roadIndex])
+  }, [visible, terrain, exaggeration])
 
   /** Muted CZ façade colours — shared material per hex. */
   const facadeMaterials = useMemo(() => {
@@ -262,7 +235,6 @@ export function BuildingsLayer({
   )
 
   const windowMat = useMemo(() => getWindowMaterial(), [])
-  const garageDoorMat = useMemo(() => getGarageDoorMaterial(), [])
 
   useEffect(() => {
     return () => {
@@ -270,7 +242,6 @@ export function BuildingsLayer({
         p.walls.dispose()
         p.roof?.dispose()
         p.windows?.dispose()
-        p.garageDoor?.dispose()
       }
     }
   }, [parts])
@@ -362,14 +333,6 @@ export function BuildingsLayer({
               <mesh
                 geometry={part.windows}
                 material={windowMat}
-                frustumCulled
-                castShadow={false}
-              />
-            )}
-            {part.garageDoor && (
-              <mesh
-                geometry={part.garageDoor}
-                material={garageDoorMat}
                 frustumCulled
                 castShadow={false}
               />

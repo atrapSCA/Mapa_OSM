@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import type { Building, RoadSegment } from '@shared/tileFormat'
+import type { Building } from '@shared/tileFormat'
 import { normalizeKind } from '@shared/osmLabels'
 import type { RoofShape } from './roofs'
 
@@ -31,9 +31,10 @@ export function storeysForWindows(
 ): number {
   const h = Math.max(2.5, Math.min(80, heightM))
   const pitched = roofShape === 'gabled' || roofShape === 'pyramidal'
+  void pitched
 
   if (h < 4.5) return 1
-  if (h < 6.5) return pitched ? 2 : 2
+  if (h < 6.5) return 2
   if (h < 9.5) return 3
   if (h < 12.5) return 4
   if (h < 16) return 5
@@ -42,128 +43,6 @@ export function storeysForWindows(
   if (h < 35) return 10
   if (h < 45) return 12
   return Math.min(18, Math.round(h / 3.2))
-}
-
-export type StreetEdge = {
-  edgeIndex: number
-  a: [number, number]
-  b: [number, number]
-  len: number
-  mid: [number, number]
-}
-
-const ROAD_CELL = 30
-
-/** Spatial index of road samples — build once per region, not per building. */
-export class RoadProximityIndex {
-  private cells = new Map<string, [number, number][]>()
-
-  constructor(roads: RoadSegment[] | null | undefined, step = 10) {
-    if (!roads) return
-    for (const seg of roads) {
-      const sp = seg.points
-      if (!sp || sp.length < 2) continue
-      for (let i = 0; i < sp.length - 1; i++) {
-        const p0 = sp[i]
-        const p1 = sp[i + 1]
-        const segLen = Math.hypot(p1[0] - p0[0], p1[1] - p0[1])
-        const steps = Math.max(1, Math.ceil(segLen / step))
-        for (let s = 0; s <= steps; s++) {
-          const t = s / steps
-          const x = p0[0] + (p1[0] - p0[0]) * t
-          const z = p0[1] + (p1[1] - p0[1]) * t
-          const key = `${Math.floor(x / ROAD_CELL)}:${Math.floor(z / ROAD_CELL)}`
-          let bucket = this.cells.get(key)
-          if (!bucket) {
-            bucket = []
-            this.cells.set(key, bucket)
-          }
-          bucket.push([x, z])
-        }
-      }
-    }
-  }
-
-  nearestDist(x: number, z: number, maxDist: number): number {
-    const r = Math.ceil(maxDist / ROAD_CELL)
-    const cx = Math.floor(x / ROAD_CELL)
-    const cz = Math.floor(z / ROAD_CELL)
-    let best = Infinity
-    for (let ix = cx - r; ix <= cx + r; ix++) {
-      for (let iz = cz - r; iz <= cz + r; iz++) {
-        const bucket = this.cells.get(`${ix}:${iz}`)
-        if (!bucket) continue
-        for (const p of bucket) {
-          const d = Math.hypot(x - p[0], z - p[1])
-          if (d < best) best = d
-        }
-      }
-    }
-    return best
-  }
-
-  get empty(): boolean {
-    return this.cells.size === 0
-  }
-}
-
-/** Edge midpoint closest to a road; else longest edge. */
-export function streetFacingEdge(
-  ring: [number, number][],
-  roads: RoadProximityIndex | null | undefined,
-): StreetEdge | null {
-  const pts = openRing(ring)
-  if (pts.length < 3) return null
-
-  let bestLong: StreetEdge | null = null
-  let bestLongLen = -1
-  const edges: StreetEdge[] = []
-  for (let i = 0; i < pts.length; i++) {
-    const a = pts[i]
-    const b = pts[(i + 1) % pts.length]
-    const len = Math.hypot(b[0] - a[0], b[1] - a[1])
-    const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
-    const e: StreetEdge = { edgeIndex: i, a, b, len, mid }
-    edges.push(e)
-    if (len > bestLongLen) {
-      bestLongLen = len
-      bestLong = e
-    }
-  }
-
-  if (!roads || roads.empty) return bestLong
-
-  let bestDist = Infinity
-  let bestEdge: StreetEdge | null = null
-  for (const e of edges) {
-    if (e.len < 2.5) continue
-    const d = roads.nearestDist(e.mid[0], e.mid[1], 25)
-    if (d < bestDist) {
-      bestDist = d
-      bestEdge = e
-    }
-  }
-
-  if (!bestEdge || bestDist > 25) return bestLong
-  return bestEdge
-}
-
-export function shouldHaveGarageDoor(b: Building): boolean {
-  const kind = normalizeKind(b.kind)
-  const h = Math.max(2.5, Math.min(80, b.height))
-  if (h > 7) return false
-  const roll = hash01(b.id, 77)
-  if (kind === 'garage') return roll < 0.85
-  if (kind === 'house') return roll < 0.4
-  if (kind === 'farm' || kind === 'building') return h <= 5.5 && roll < 0.22
-  return false
-}
-
-export type GarageDoorInfo = {
-  edgeIndex: number
-  /** Parametric t0..t1 along edge for window skip zone. */
-  t0: number
-  t1: number
 }
 
 /**
@@ -175,7 +54,6 @@ export function createWindowGeometry(
   yBase: number,
   wallHExag: number,
   roofShape: RoofShape,
-  roads?: RoadProximityIndex | null,
 ): THREE.BufferGeometry | null {
   const kind = normalizeKind(b.kind)
   if (kind === 'garage') return null
@@ -196,25 +74,15 @@ export function createWindowGeometry(
   const topMargin = wallHExag * (pitched ? 0.18 : 0.08)
   const usableH = Math.max(wallHExag - topMargin, winH * 1.2)
   const rowPitch = usableH / rows
-  const sill0 = Math.min(1.0 * (wallHExag / Math.max(b.height, 2.5)), rowPitch * 0.25)
-  const winHEx = Math.min(winH * (wallHExag / Math.max(b.height, 2.5)), rowPitch * 0.55)
+  const sill0 = Math.min(
+    1.0 * (wallHExag / Math.max(b.height, 2.5)),
+    rowPitch * 0.25,
+  )
+  const winHEx = Math.min(
+    winH * (wallHExag / Math.max(b.height, 2.5)),
+    rowPitch * 0.55,
+  )
   const outset = 0.06
-
-  // Garage door skip zone on street edge (ground floor only)
-  let doorSkip: GarageDoorInfo | null = null
-  if (shouldHaveGarageDoor(b)) {
-    const edge = streetFacingEdge(ring, roads)
-    if (edge && edge.len >= 3.2) {
-      const doorW = Math.min(2.5, edge.len * 0.45)
-      const midT = 0.35 + hash01(b.id, 78) * 0.3
-      const half = doorW / (2 * edge.len)
-      doorSkip = {
-        edgeIndex: edge.edgeIndex,
-        t0: Math.max(0.05, midT - half),
-        t1: Math.min(0.95, midT + half),
-      }
-    }
-  }
 
   let salt = 1
   for (let e = 0; e < ring.length; e++) {
@@ -258,17 +126,6 @@ export function createWindowGeometry(
         const t1 = tCenter + halfTw
         if (t0 < 0 || t1 > 1) continue
 
-        // Skip ground-floor windows overlapping garage door
-        if (
-          f === 0 &&
-          doorSkip &&
-          doorSkip.edgeIndex === e &&
-          tCenter > doorSkip.t0 &&
-          tCenter < doorSkip.t1
-        ) {
-          continue
-        }
-
         const y0 = yBase + sill0 + f * rowPitch
         const y1 = y0 + winHEx
         if (y1 > yBase + wallHExag - topMargin * 0.35) continue
@@ -294,62 +151,6 @@ export function createWindowGeometry(
   return geo
 }
 
-/** Dark garage door quad on street-facing façade. */
-export function createGarageDoorGeometry(
-  b: Building,
-  yBase: number,
-  wallHExag: number,
-  roads?: RoadProximityIndex | null,
-): THREE.BufferGeometry | null {
-  if (!shouldHaveGarageDoor(b)) return null
-  const ring = openRing(b.rings[0] ?? [])
-  if (ring.length < 3) return null
-
-  const edge = streetFacingEdge(ring, roads)
-  if (!edge || edge.len < 3.2) return null
-
-  const doorW = Math.min(2.5, Math.max(2.15, edge.len * 0.42))
-  const doorH = Math.min(2.15, wallHExag * 0.55)
-  const midT = 0.35 + hash01(b.id, 78) * 0.3
-  const half = doorW / (2 * edge.len)
-  const t0 = Math.max(0.04, midT - half)
-  const t1 = Math.min(0.96, midT + half)
-
-  const dx = edge.b[0] - edge.a[0]
-  const dz = edge.b[1] - edge.a[1]
-  const len = edge.len
-  let nx = -dz / len
-  let nz = dx / len
-  let cx = 0
-  let cz = 0
-  for (const p of ring) {
-    cx += p[0]
-    cz += p[1]
-  }
-  cx /= ring.length
-  cz /= ring.length
-  if ((edge.mid[0] - cx) * nx + (edge.mid[1] - cz) * nz < 0) {
-    nx = -nx
-    nz = -nz
-  }
-  const outset = 0.08
-  const y0 = yBase + 0.05
-  const y1 = y0 + doorH
-
-  const x0 = edge.a[0] + dx * t0 + nx * outset
-  const z0 = edge.a[1] + dz * t0 + nz * outset
-  const x1 = edge.a[0] + dx * t1 + nx * outset
-  const z1 = edge.a[1] + dz * t1 + nz * outset
-
-  const positions = [x0, y0, z0, x1, y0, z1, x1, y1, z1, x0, y1, z0]
-  const indices = [0, 1, 2, 0, 2, 3]
-  const geo = new THREE.BufferGeometry()
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  geo.setIndex(indices)
-  geo.computeVertexNormals()
-  return geo
-}
-
 const windowMat = new THREE.MeshStandardMaterial({
   color: '#ffe6a0',
   emissive: '#ffcc66',
@@ -360,17 +161,6 @@ const windowMat = new THREE.MeshStandardMaterial({
   toneMapped: false,
 })
 
-const garageDoorMat = new THREE.MeshStandardMaterial({
-  color: '#2e2e34',
-  flatShading: true,
-  roughness: 0.75,
-  metalness: 0.12,
-})
-
 export function getWindowMaterial(): THREE.MeshStandardMaterial {
   return windowMat
-}
-
-export function getGarageDoorMaterial(): THREE.MeshStandardMaterial {
-  return garageDoorMat
 }
