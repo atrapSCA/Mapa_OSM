@@ -29,24 +29,22 @@ export const CZ_ROOF_COLORS = [
   '#7d3b2f', // muted red-brown
 ] as const
 
-/** Flat / membrane roofs — greys, charcoal, olive-drab (CZ panelák). */
+/** Flat / membrane roofs — mid greys & olive (no near-black — looks unnatural). */
 export const CZ_FLAT_ROOF_COLORS = [
+  '#7a7a7a',
   '#6a6a6a',
-  '#5a5a5a',
-  '#4a4a4a',
-  '#3d3d3d',
+  '#5c5c5c',
   '#555555',
-  '#484848',
-  '#2f2f2f',
   '#666666',
-  '#525252',
-  '#3a3a3a',
+  '#5a5a5a',
   '#707070',
-  '#262626',
+  '#626262',
+  '#686868',
   '#5a5c52', // olive grey
-  '#4a4e46',
+  '#4e524c',
   '#6b6e62',
-  '#3e423c',
+  '#585c56',
+  '#737873',
 ] as const
 
 /** Occasional timber gable boarding. */

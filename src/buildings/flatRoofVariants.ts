@@ -4,8 +4,8 @@ import type { Building } from '@shared/tileFormat'
 export type FlatRoofVariant = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
 export const FLAT_PARAPET_COLOR = '#9a9a9a'
-export const FLAT_DETAIL_COLOR = '#3a3a3a'
-export const FLAT_SOLAR_COLOR = '#1a2430'
+export const FLAT_DETAIL_COLOR = '#5a5a5a'
+export const FLAT_SOLAR_COLOR = '#4a5560'
 
 function hash01(id: string, salt = 0): number {
   let h = 2166136261 ^ salt
