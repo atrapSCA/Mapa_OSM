@@ -263,6 +263,110 @@ body,
   pointer-events: none;
 }
 
+.building-bubble-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 20;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.building-bubble-layer[data-side='left'] .building-bubble::after {
+  left: auto;
+  right: -6px;
+  border-left: none;
+  border-right: 1px solid var(--panel-border);
+  border-bottom: none;
+  border-top: 1px solid var(--panel-border);
+}
+
+.building-bubble {
+  position: relative;
+  min-width: 200px;
+  max-width: 260px;
+  padding: 0.65rem 0.75rem 0.7rem;
+  border-radius: 10px;
+  background: rgba(36, 48, 44, 0.96);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  user-select: text;
+  pointer-events: auto;
+}
+
+.building-bubble::after {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  background: rgba(36, 48, 44, 0.96);
+  border-left: 1px solid var(--panel-border);
+  border-bottom: 1px solid var(--panel-border);
+  transform: rotate(45deg);
+}
+
+.building-bubble-close {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.35rem;
+  width: 1.4rem;
+  height: 1.4rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.building-bubble-close:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.building-bubble-title {
+  margin: 0 1.2rem 0.45rem 0;
+  font-weight: 650;
+  font-size: 0.9rem;
+  letter-spacing: -0.01em;
+}
+
+.building-bubble-meta {
+  margin: 0;
+  display: grid;
+  gap: 0.28rem;
+}
+
+.building-bubble-meta > div {
+  display: grid;
+  grid-template-columns: 3.2rem 1fr;
+  gap: 0.4rem;
+  align-items: baseline;
+}
+
+.building-bubble-meta dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.building-bubble-meta dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  word-break: break-all;
+}
+
 .loading,
 .error-box {
   position: absolute;

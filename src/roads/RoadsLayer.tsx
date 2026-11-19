@@ -47,8 +47,8 @@ function RoadGroupMesh({
         depthTest
         toneMapped={false}
         polygonOffset
-        polygonOffsetFactor={-1}
-        polygonOffsetUnits={-1}
+        polygonOffsetFactor={-2}
+        polygonOffsetUnits={-2}
       />
     </mesh>
   )
@@ -87,7 +87,7 @@ export function RoadsLayer({
           terrain={terrain}
           exaggeration={exaggeration}
           color={PATH_COLOR}
-          lift={1.55}
+          lift={0.4}
           renderOrder={1}
         />
       )}
@@ -97,7 +97,7 @@ export function RoadsLayer({
           terrain={terrain}
           exaggeration={exaggeration}
           color={ROAD_COLOR}
-          lift={2.25}
+          lift={0.55}
           renderOrder={2}
         />
       )}

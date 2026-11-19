@@ -4,6 +4,31 @@
 
 ---
 
+## 0.0.27 — 2026-11-19
+
+### Přidáno
+- **Klikací budovy** — každá budova je vlastní mesh s unikátním OSM id (`w…` / `r…`)
+- Info bublina vedle budovy (ID, název, typ, výška, plocha); pozice podle projekce AABB na obrazovku
+- `src/store/selection.ts` — výběr / Esc / klik mimo
+- `start.bat` upravený pro různé PC (Node v PATH, npm install, regenerace tiles)
+
+### Opraveno
+- Budovy na svahu sedí na **max** výšce footprintu (nepropadají do svahu)
+- Silnice: menší lift po exaggeraci + sampling levý/pravý okraj (méně z-fightingu / trhání)
+- Bublina: ne přes `createPortal` v R3F (shazovalo Canvas) — samostatný React root na viewportu
+
+---
+
+## 0.0.26 — 2026-11-19
+
+### Přidáno
+- **Budovy** z OSM (`scripts/osm-buildings.ts` → `osm/buildings.json`)
+- Extrude footprintů na DEM, výška z `height` / `building:levels` / default podle druhu
+- Podkategorie v menu (dům, bytovka, průmysl…)
+- `npm run pipeline:buildings` pro rychlé stažení jen budov
+
+---
+
 ## 0.0.25 — 2026-11-19
 
 ### Opraveno

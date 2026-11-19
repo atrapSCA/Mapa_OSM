@@ -9,7 +9,7 @@ import { clipPolylineOutsidePolygons } from '@/geo/clipPolyline'
 import { useLayers } from '@/store/layers'
 
 const WATER_COLOR = '#6eb4d4'
-const LIFT_WAY = 1.35
+const LIFT_WAY = 0.4
 
 const WATERWAY_COLORS: Record<string, string> = {
   river: '#5aa8c8',

@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useLayers } from '@/store/layers'
 import type {
+  BuildingLayerJson,
   NatureLayerJson,
   RegionManifest,
   RoadLayerJson,
@@ -95,8 +96,8 @@ const TOGGLES: ToggleDef[] = [
   {
     key: 'buildings',
     title: 'Budovy',
-    hint: 'OSM building extrude',
-    phase: 'next',
+    hint: 'Extrudované půdorysy z OSM',
+    phase: 'now',
   },
   {
     key: 'labels',
@@ -164,11 +165,13 @@ export function SidePanel({
   water,
   roads,
   nature,
+  buildings,
 }: {
   manifest: RegionManifest | null
   water: WaterLayerJson | null
   roads: RoadLayerJson | null
   nature: NatureLayerJson | null
+  buildings: BuildingLayerJson | null
 }) {
   const layers = useLayers()
 
@@ -185,6 +188,10 @@ export function SidePanel({
   const natureKinds = useMemo(
     () => collectKinds(nature?.polygons),
     [nature],
+  )
+  const buildingKinds = useMemo(
+    () => collectKinds(buildings?.buildings),
+    [buildings],
   )
 
   return (
@@ -262,6 +269,9 @@ export function SidePanel({
                 {t.key === 'paths' && on && (
                   <SubKindToggles group="paths" kinds={pathKinds} />
                 )}
+                {t.key === 'buildings' && on && (
+                  <SubKindToggles group="buildings" kinds={buildingKinds} />
+                )}
               </div>
             )
           })}
@@ -327,6 +337,9 @@ export function SidePanel({
             </div>
             {manifest.stats.nature != null && (
               <div>příroda: {manifest.stats.nature} ploch</div>
+            )}
+            {manifest.stats.buildings != null && (
+              <div>budovy: {manifest.stats.buildings}</div>
             )}
             {manifest.stats.waterways != null && (
               <div>

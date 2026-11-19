@@ -1,7 +1,7 @@
 {
   "name": "mapa-osm",
   "private": true,
-  "version": "0.0.25",
+  "version": "0.0.27",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "pipeline:rakovnik": "tsx scripts/build-region.ts --region rakovnik",
     "pipeline:terrain": "tsx scripts/build-region.ts --region rakovnik --terrain-only",
+    "pipeline:buildings": "tsx scripts/build-region.ts --region rakovnik --buildings-only",
     "pipeline:bbox": "tsx scripts/build-region.ts",
     "serve:tiles": "tsx scripts/serve-tiles.ts"
   },

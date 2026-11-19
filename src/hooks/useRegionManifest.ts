@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type {
+  BuildingLayerJson,
   ContinuousTerrainJson,
   NatureLayerJson,
   RegionManifest,
@@ -13,6 +14,7 @@ export type LoadedRegion = {
   water: WaterLayerJson | null
   roads: RoadLayerJson | null
   nature: NatureLayerJson | null
+  buildings: BuildingLayerJson | null
 }
 
 export function useRegionManifest(regionId: string) {
@@ -67,7 +69,17 @@ export function useRegionManifest(regionId: string) {
           }
         }
 
-        if (!cancelled) setData({ manifest, terrain, water, roads, nature })
+        let buildings: BuildingLayerJson | null = null
+        if (manifest.buildingsPath) {
+          const bRes = await fetch(`${base}/${manifest.buildingsPath}`)
+          if (bRes.ok) {
+            buildings = (await bRes.json()) as BuildingLayerJson
+          }
+        }
+
+        if (!cancelled) {
+          setData({ manifest, terrain, water, roads, nature, buildings })
+        }
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : String(e))

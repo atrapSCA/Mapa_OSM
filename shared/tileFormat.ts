@@ -144,6 +144,32 @@ export type NatureLayerJson = {
   }
 }
 
+export type Building = {
+  id: string
+  name?: string
+  kind: string
+  /** Extrude height in meters. */
+  height: number
+  /** rings[0] = outer, rest = holes; local meters [x,z] */
+  rings: [number, number][][]
+}
+
+export type BuildingLayerJson = {
+  format: 'mapa-osm-buildings-v1'
+  origin: { lon: number; lat: number }
+  bbox: {
+    west: number
+    south: number
+    east: number
+    north: number
+  }
+  buildings: Building[]
+  stats: {
+    buildingCount: number
+    byKind: Record<string, number>
+  }
+}
+
 export type RegionManifest = {
   format: 'mapa-osm-manifest-v1'
   regionId: string
@@ -163,6 +189,7 @@ export type RegionManifest = {
   waterPath?: string
   roadsPath?: string
   naturePath?: string
+  buildingsPath?: string
   tiles: { z: number; x: number; y: number; path: string }[]
   generatedAt: string
   stats: {
@@ -175,5 +202,6 @@ export type RegionManifest = {
     roads?: number
     paths?: number
     nature?: number
+    buildings?: number
   }
 }

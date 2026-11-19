@@ -101,7 +101,16 @@ function heightAt(
   exaggeration: number,
   liftMeters: number,
 ): number {
-  return (sampleTerrainHeight(terrain, x, z) + liftMeters) * exaggeration
+  // Lift = scene metres above terrain (not exaggerated).
+  // Tiny neighbourhood max covers DEM bilinear vs terrain-triangle mismatch.
+  const h = Math.max(
+    sampleTerrainHeight(terrain, x, z),
+    sampleTerrainHeight(terrain, x + 0.35, z),
+    sampleTerrainHeight(terrain, x - 0.35, z),
+    sampleTerrainHeight(terrain, x, z + 0.35),
+    sampleTerrainHeight(terrain, x, z - 0.35),
+  )
+  return h * exaggeration + liftMeters
 }
 
 /** Extend open ends slightly so neighbouring road ways overlap at junctions. */
@@ -147,13 +156,13 @@ export function ribbonGeometry(
   width: number,
   terrain: ContinuousTerrainJson,
   exaggeration: number,
-  liftMeters = 1.5,
+  liftMeters = 0.5,
 ): THREE.BufferGeometry | null {
   let raw = closeIfNearlyClosed(dedupe(pointsIn))
   if (raw.length < 2) return null
 
   const closed = isClosedRing(raw)
-  // Denser sampling on compact loops (roundabouts).
+  // Denser sampling on compact loops (roundabouts) and slopes.
   const bboxSpan = (() => {
     let minX = Infinity
     let maxX = -Infinity
@@ -168,7 +177,7 @@ export function ribbonGeometry(
     return Math.hypot(maxX - minX, maxZ - minZ)
   })()
   const spacing =
-    closed && bboxSpan < 120 ? 1.2 : closed ? 1.6 : 2.4
+    closed && bboxSpan < 120 ? 0.9 : closed ? 1.2 : 1.5
 
   const points = smoothPolyline(raw, spacing, closed)
   if (points.length < 2) return null
@@ -188,7 +197,8 @@ export function ribbonGeometry(
   const positions: number[] = []
   const indices: number[] = []
 
-  // Continuous strip with averaged tangents → smooth curve sides
+  // Continuous strip with averaged tangents → smooth curve sides.
+  // Sample left/right edges separately so cross-slopes don't bury half the ribbon.
   for (let i = 0; i < n; i++) {
     const prev = polyDraw[ring ? (i - 1 + n) % n : Math.max(0, i - 1)]
     const curr = polyDraw[i]
@@ -208,11 +218,15 @@ export function ribbonGeometry(
     dz /= len
     const px = -dz * half
     const pz = dx * half
-    // Identical lift along strip → no shading steps at overlaps
-    const y = heightAt(terrain, curr[0], curr[1], exaggeration, liftMeters)
+    const lx = curr[0] + px
+    const lz = curr[1] + pz
+    const rx = curr[0] - px
+    const rz = curr[1] - pz
+    const yL = heightAt(terrain, lx, lz, exaggeration, liftMeters)
+    const yR = heightAt(terrain, rx, rz, exaggeration, liftMeters)
 
-    positions.push(curr[0] + px, y, curr[1] + pz)
-    positions.push(curr[0] - px, y, curr[1] - pz)
+    positions.push(lx, yL, lz)
+    positions.push(rx, yR, rz)
   }
 
   const segCount = ring ? n : n - 1
@@ -237,7 +251,7 @@ export function mergeRibbons(
   segments: { points: [number, number][]; width: number }[],
   terrain: ContinuousTerrainJson,
   exaggeration: number,
-  liftMeters = 1.5,
+  liftMeters = 0.5,
 ): THREE.BufferGeometry | null {
   const positions: number[] = []
   const indices: number[] = []

@@ -86,7 +86,7 @@ export const useLayers = create<LayerState>()(
       waterPolygons: true,
       waterways: true,
       nature: true,
-      buildings: false,
+      buildings: true,
       roads: true,
       paths: true,
       labels: false,

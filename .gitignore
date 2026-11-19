@@ -4,6 +4,7 @@ dist
 *.log
 .env
 .env.*
+*.tsbuildinfo
 data/raw
 # Generated tiles can be large — keep local; regenerate via pipeline
 data/tiles

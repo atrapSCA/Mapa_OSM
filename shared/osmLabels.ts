@@ -6,6 +6,7 @@ export type KindGroup =
   | 'waterways'
   | 'waterPolygons'
   | 'nature'
+  | 'buildings'
 
 export const KIND_LABELS: Record<KindGroup, Record<string, string>> = {
   roads: {
@@ -58,6 +59,17 @@ export const KIND_LABELS: Record<KindGroup, Record<string, string>> = {
     allotments: 'Zahrádkářská osada',
     sand: 'Písek / pláž',
     bare_rock: 'Skála / sutě',
+  },
+  buildings: {
+    building: 'Budova (obecná)',
+    house: 'Rodinný dům',
+    apartments: 'Bytový dům',
+    industrial: 'Průmysl',
+    commercial: 'Obchod / kancelář',
+    church: 'Kostel / sakrální',
+    public: 'Veřejná budova',
+    garage: 'Garáž / kůlna',
+    farm: 'Hospodářská',
   },
 }
 
