@@ -434,9 +434,14 @@ function appendGabledChimneys(
   if (roll < 0.28) count = 2
   if (count === 0) return 0
 
-  const stackH =
-    (0.85 + hash01(buildingId + ':chH') * 0.55) * Math.min(exag, 2.2)
-  const halfSide = 0.22 + hash01(buildingId + ':chW') * 0.08
+  // Per-building size class: slim flue → stout brick stack
+  const sizeRoll = hash01(buildingId + ':chW')
+  const halfSide =
+    sizeRoll < 0.35
+      ? 0.14 + sizeRoll * 0.2 // small ~0.14–0.21
+      : sizeRoll < 0.75
+        ? 0.22 + (sizeRoll - 0.35) * 0.35 // medium ~0.22–0.36
+        : 0.36 + (sizeRoll - 0.75) * 0.55 // large ~0.36–0.50
 
   for (let i = 0; i < count; i++) {
     const u = (hash01(buildingId + `:chU${i}`) - 0.5) * halfLong * 1.1
@@ -451,6 +456,12 @@ function appendGabledChimneys(
     const z = cz + u * rz + v * sz
     // Sink slightly into the slope so the stack doesn't float
     const y0 = ySurf - 0.15 * Math.min(exag, 2)
+    // Second chimney can be a bit smaller than the house's main stack
+    const scale = i === 0 ? 1 : 0.7 + hash01(buildingId + `:chSc${i}`) * 0.25
+    const hs = halfSide * scale
+    const stackH =
+      (0.75 + hs * 1.8 + hash01(buildingId + `:chH${i}`) * 0.45) *
+      Math.min(exag, 2.2)
     addChimneyBox(
       positions,
       indices,
@@ -459,8 +470,8 @@ function appendGabledChimneys(
       z,
       y0,
       y0 + stackH,
-      halfSide,
-      halfSide,
+      hs,
+      hs * (0.85 + hash01(buildingId + `:chR${i}`) * 0.3), // slight rectangle
       ru,
       rz,
       su,
