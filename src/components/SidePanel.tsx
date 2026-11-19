@@ -270,7 +270,20 @@ export function SidePanel({
                   <SubKindToggles group="paths" kinds={pathKinds} />
                 )}
                 {t.key === 'buildings' && on && (
-                  <SubKindToggles group="buildings" kinds={buildingKinds} />
+                  <>
+                    <button
+                      type="button"
+                      className={`toggle sub${layers.buildingSkins ? ' on' : ''}`}
+                      onClick={() => layers.toggle('buildingSkins')}
+                    >
+                      <div className="toggle-label">
+                        <strong>Skiny budov</strong>
+                        <span>OSM Texture Library — fasáda + střecha</span>
+                      </div>
+                      <div className="switch" aria-hidden />
+                    </button>
+                    <SubKindToggles group="buildings" kinds={buildingKinds} />
+                  </>
                 )}
               </div>
             )

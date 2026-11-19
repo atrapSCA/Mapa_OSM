@@ -22,6 +22,8 @@ export type LayerState = {
   waterways: boolean
   nature: boolean
   buildings: boolean
+  /** OSM Texture Library albedo skins on extruded buildings (feature branch). */
+  buildingSkins: boolean
   roads: boolean
   paths: boolean
   labels: boolean
@@ -66,6 +68,7 @@ type PersistedLayers = Pick<
   | 'waterways'
   | 'nature'
   | 'buildings'
+  | 'buildingSkins'
   | 'roads'
   | 'paths'
   | 'labels'
@@ -87,6 +90,7 @@ export const useLayers = create<LayerState>()(
       waterways: true,
       nature: true,
       buildings: true,
+      buildingSkins: true,
       roads: true,
       paths: true,
       labels: false,
@@ -110,7 +114,7 @@ export const useLayers = create<LayerState>()(
       },
     }),
     {
-      name: 'mapa-osm-layers-v4',
+      name: 'mapa-osm-layers-v5-skins',
       partialize: (s): PersistedLayers => ({
         terrain: s.terrain,
         hypsometric: s.hypsometric,
@@ -123,6 +127,7 @@ export const useLayers = create<LayerState>()(
         waterways: s.waterways,
         nature: s.nature,
         buildings: s.buildings,
+        buildingSkins: s.buildingSkins,
         roads: s.roads,
         paths: s.paths,
         labels: s.labels,
@@ -136,6 +141,7 @@ export const useLayers = create<LayerState>()(
           ...p,
           waterPolygons: p.waterPolygons ?? true,
           waterways: p.waterways ?? true,
+          buildingSkins: p.buildingSkins ?? true,
           kindEnabled: p.kindEnabled ?? {},
         }
       },

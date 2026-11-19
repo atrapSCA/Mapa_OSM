@@ -6,6 +6,7 @@ import type { Building, ContinuousTerrainJson } from '@shared/tileFormat'
 import { labelFor } from '@shared/osmLabels'
 import { useSelection } from '@/store/selection'
 import { buildingWorldCorners, ringAreaAbs } from './buildingGeom'
+import { roofShapeForBuilding } from './roofs'
 
 const MARGIN = 14
 const BUBBLE_W = 220
@@ -14,11 +15,13 @@ function BubbleCard({
   building,
   area,
   kindLabel,
+  roofShape,
   onClose,
 }: {
   building: Building
   area: number
   kindLabel: string
+  roofShape: string
   onClose: () => void
 }) {
   return (
@@ -54,6 +57,10 @@ function BubbleCard({
           <dt>Plocha</dt>
           <dd>{area.toLocaleString('cs-CZ')} m²</dd>
         </div>
+        <div>
+          <dt>Střecha</dt>
+          <dd>{roofShape}</dd>
+        </div>
       </dl>
     </div>
   )
@@ -86,6 +93,7 @@ export function BuildingBubble({
 
   const area = Math.round(ringAreaAbs(building.rings[0] ?? []))
   const kindLabel = labelFor('buildings', building.kind)
+  const roofShape = roofShapeForBuilding(building)
 
   useEffect(() => {
     const host = gl.domElement.parentElement
@@ -108,6 +116,7 @@ export function BuildingBubble({
         building={building}
         area={area}
         kindLabel={kindLabel}
+        roofShape={roofShape}
         onClose={clear}
       />,
     )
@@ -124,7 +133,7 @@ export function BuildingBubble({
       layerRef.current = null
       cardRef.current = null
     }
-  }, [gl, building, area, kindLabel, clear])
+  }, [gl, building, area, kindLabel, roofShape, clear])
 
   useFrame(() => {
     const layer = layerRef.current

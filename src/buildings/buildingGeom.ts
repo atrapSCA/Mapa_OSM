@@ -69,10 +69,28 @@ export function footprintCentroid(ring: [number, number][]): [number, number] {
   return [sx / n, sz / n]
 }
 
+/** World Y of building base (terrain max under footprint + lift). */
+export function buildingBaseY(
+  b: Building,
+  terrain: ContinuousTerrainJson,
+  exaggeration: number,
+): number {
+  const ring = b.rings[0]
+  if (!ring) return 0
+  return footprintMaxElev(ring, terrain) * exaggeration + 0.08
+}
+
+/**
+ * Extruded walls. `wallHeightM` is unexaggerated metres to eaves
+ * (full building height when no separate pitched roof).
+ * When `wallsOnly`, roof/floor cap triangles are dropped (roof mesh added separately).
+ */
 export function buildingGeometry(
   b: Building,
   terrain: ContinuousTerrainJson,
   exaggeration: number,
+  wallHeightM?: number,
+  wallsOnly = false,
 ): THREE.BufferGeometry | null {
   try {
     const raw = b.rings[0]
@@ -99,7 +117,8 @@ export function buildingGeometry(
       shape.holes.push(path)
     }
 
-    const height = Math.max(2.5, Math.min(80, b.height)) * exaggeration
+    const hM = wallHeightM ?? Math.max(2.5, Math.min(80, b.height))
+    const height = Math.max(1.5, hM) * exaggeration
     const geo = new THREE.ExtrudeGeometry(shape, {
       depth: height,
       bevelEnabled: false,
@@ -108,13 +127,76 @@ export function buildingGeometry(
     })
     geo.rotateX(-Math.PI / 2)
 
-    const maxElev = footprintMaxElev(outer, terrain)
-    const y0 = maxElev * exaggeration + 0.08
+    const y0 = buildingBaseY(b, terrain, exaggeration)
     geo.translate(0, y0, 0)
+    // UV in world metres + material groups: 0 = walls, 1 = roof/floor caps
+    applyMeterUVsAndGroups(geo, wallsOnly)
     return geo
   } catch {
     return null
   }
+}
+
+/**
+ * Rebuild UVs so 1 UV unit = 1 metre (texture.repeat = 1/tileSizeM).
+ * Split index buffer into wall (mat 0) and roof/floor (mat 1) groups.
+ */
+function applyMeterUVsAndGroups(
+  geo: THREE.BufferGeometry,
+  wallsOnly = false,
+): void {
+  const pos = geo.getAttribute('position') as THREE.BufferAttribute
+  const idx = geo.getIndex()
+  if (!pos || !idx) return
+
+  const uv = new Float32Array(pos.count * 2)
+  const wallIdx: number[] = []
+  const roofIdx: number[] = []
+
+  const ax = new THREE.Vector3()
+  const bx = new THREE.Vector3()
+  const cx = new THREE.Vector3()
+  const e1 = new THREE.Vector3()
+  const e2 = new THREE.Vector3()
+  const n = new THREE.Vector3()
+
+  for (let t = 0; t < idx.count; t += 3) {
+    const i0 = idx.getX(t)
+    const i1 = idx.getX(t + 1)
+    const i2 = idx.getX(t + 2)
+    ax.fromBufferAttribute(pos, i0)
+    bx.fromBufferAttribute(pos, i1)
+    cx.fromBufferAttribute(pos, i2)
+    e1.subVectors(bx, ax)
+    e2.subVectors(cx, ax)
+    n.crossVectors(e1, e2).normalize()
+
+    const isRoof = Math.abs(n.y) > 0.55
+    if (isRoof) {
+      for (const i of [i0, i1, i2]) {
+        uv[i * 2] = pos.getX(i)
+        uv[i * 2 + 1] = pos.getZ(i)
+      }
+      if (!wallsOnly) roofIdx.push(i0, i1, i2)
+    } else {
+      const useZ = Math.abs(n.x) >= Math.abs(n.z)
+      for (const i of [i0, i1, i2]) {
+        uv[i * 2] = useZ ? pos.getZ(i) : pos.getX(i)
+        uv[i * 2 + 1] = pos.getY(i)
+      }
+      wallIdx.push(i0, i1, i2)
+    }
+  }
+
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
+  const merged = wallsOnly ? wallIdx : wallIdx.concat(roofIdx)
+  geo.setIndex(merged)
+  geo.clearGroups()
+  if (wallIdx.length) geo.addGroup(0, wallIdx.length, 0)
+  if (!wallsOnly && roofIdx.length) {
+    geo.addGroup(wallIdx.length, roofIdx.length, 1)
+  }
+  geo.computeVertexNormals()
 }
 
 /** World-space AABB corners (8) of the extruded building for screen projection. */

@@ -4,6 +4,29 @@
 
 ---
 
+## 0.0.28 — 2026-11-19 (větev `feature/building-skins`)
+
+> Experimentální větev — pokud nevyjde, smazat větev; `main` zůstane na 0.0.27.
+
+### V1 — Skiny (OSM Texture Library)
+- Vendored PD textury fasád/střech do `public/textures/buildings/` (+ ATTRIBUTION.md)
+- UV ve metrech, multi-material stěny / střecha
+- Přepínač **Skiny budov** v menu
+
+### V2 — Tvary střech (inspirace OSMBuildings / S3DB / Streets GL)
+- `flat` | `gabled` | `pyramidal` | `skillion` podle `kind` + hash `id`
+- Stěny do okapu, střecha samostatný mesh
+- V bublině zobrazen typ střechy
+
+### Rollback
+```
+git checkout main
+git branch -D feature/building-skins
+git push origin --delete feature/building-skins
+```
+
+---
+
 ## 0.0.27 — 2026-11-19
 
 ### Přidáno
