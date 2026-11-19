@@ -50,6 +50,9 @@ export const CZ_FLAT_ROOF_COLORS = [
 /** Occasional timber gable boarding. */
 export const GABLE_WOOD_COLOR = '#6b4423'
 
+/** Brick chimney stacks on classic pitched roofs. */
+export const CHIMNEY_COLOR = '#5c4030'
+
 function hash01(id: string): number {
   let h = 2166136261
   for (let i = 0; i < id.length; i++) {
@@ -361,6 +364,112 @@ function buildGabledOBB(
   }
 }
 
+/** Simple brick box (no bottom) for chimney stacks. */
+function addChimneyBox(
+  positions: number[],
+  indices: number[],
+  push: (x: number, y: number, z: number) => number,
+  cx: number,
+  cz: number,
+  y0: number,
+  y1: number,
+  halfU: number,
+  halfV: number,
+  ux: number,
+  uz: number,
+  vx: number,
+  vz: number,
+): void {
+  const c = (du: number, dv: number, y: number) =>
+    push(cx + du * ux + dv * vx, y, cz + du * uz + dv * vz)
+  const b000 = c(-halfU, -halfV, y0)
+  const b100 = c(halfU, -halfV, y0)
+  const b110 = c(halfU, halfV, y0)
+  const b010 = c(-halfU, halfV, y0)
+  const t000 = c(-halfU, -halfV, y1)
+  const t100 = c(halfU, -halfV, y1)
+  const t110 = c(halfU, halfV, y1)
+  const t010 = c(-halfU, halfV, y1)
+  pushTri(positions, indices, t000, t100, t110, 0, 1, 0)
+  pushTri(positions, indices, t000, t110, t010, 0, 1, 0)
+  pushTri(positions, indices, b000, b100, t100, 0, 0, -1)
+  pushTri(positions, indices, b000, t100, t000, 0, 0, -1)
+  pushTri(positions, indices, b100, b110, t110, 1, 0, 0)
+  pushTri(positions, indices, b100, t110, t100, 1, 0, 0)
+  pushTri(positions, indices, b110, b010, t010, 0, 0, 1)
+  pushTri(positions, indices, b110, t010, t110, 0, 0, 1)
+  pushTri(positions, indices, b010, b000, t000, -1, 0, 0)
+  pushTri(positions, indices, b010, t000, t010, -1, 0, 0)
+}
+
+/**
+ * 0–2 chimneys on a gabled OBB, seated on the roof slope near the ridge.
+ */
+function appendGabledChimneys(
+  buildingId: string,
+  obb: OBB,
+  yEaves: number,
+  riseExag: number,
+  exag: number,
+  positions: number[],
+  indices: number[],
+  push: (x: number, y: number, z: number) => number,
+): number {
+  const before = indices.length
+  const { cx, cz, ux, uz, vx, vz, halfU, halfV } = obb
+  const alongU = halfU >= halfV
+  // Local long = ridge, short = across slopes
+  const ru = alongU ? ux : vx
+  const rz = alongU ? uz : vz
+  const su = alongU ? vx : ux
+  const sz = alongU ? vz : uz
+  const halfLong = Math.max(halfU, halfV)
+  const halfShort = Math.min(halfU, halfV)
+  if (halfLong < 2.5 || halfShort < 1.2) return 0
+
+  const roll = hash01(buildingId + ':chimney')
+  // ~70% at least one chimney on classic houses
+  let count = 0
+  if (roll < 0.72) count = 1
+  if (roll < 0.28) count = 2
+  if (count === 0) return 0
+
+  const stackH =
+    (0.85 + hash01(buildingId + ':chH') * 0.55) * Math.min(exag, 2.2)
+  const halfSide = 0.22 + hash01(buildingId + ':chW') * 0.08
+
+  for (let i = 0; i < count; i++) {
+    const u = (hash01(buildingId + `:chU${i}`) - 0.5) * halfLong * 1.1
+    // Sit on one slope near the ridge (not at eaves)
+    const side = hash01(buildingId + `:chS${i}`) < 0.5 ? 1 : -1
+    const vAbs =
+      halfShort * (0.12 + hash01(buildingId + `:chV${i}`) * 0.28)
+    const v = side * vAbs
+    // Roof surface height on gable: linear from eaves to ridge
+    const ySurf = yEaves + riseExag * (1 - Math.min(1, vAbs / halfShort))
+    const x = cx + u * ru + v * su
+    const z = cz + u * rz + v * sz
+    // Sink slightly into the slope so the stack doesn't float
+    const y0 = ySurf - 0.15 * Math.min(exag, 2)
+    addChimneyBox(
+      positions,
+      indices,
+      push,
+      x,
+      z,
+      y0,
+      y0 + stackH,
+      halfSide,
+      halfSide,
+      ru,
+      rz,
+      su,
+      sz,
+    )
+  }
+  return indices.length - before
+}
+
 /** Flat roof following the real footprint (works for L/U via earcut). */
 function buildFlatRoof(
   ring: [number, number][],
@@ -422,6 +531,7 @@ export function createRoofGeometry(
   let gableCount = 0
   let parapetCount = 0
   let detailCount = 0
+  let chimneyCount = 0
 
   if (resolved === 'flat') {
     buildFlatRoof(ring, yEaves, positions, indices, push)
@@ -465,8 +575,9 @@ export function createRoofGeometry(
     }
     slopeCount = indices.length
   } else if (resolved === 'gabled') {
+    const obb = footprintOBB(ring, EAVES_OVERHANG_M)
     const parts = buildGabledOBB(
-      footprintOBB(ring, EAVES_OVERHANG_M),
+      obb,
       yEaves,
       riseExag,
       positions,
@@ -475,6 +586,18 @@ export function createRoofGeometry(
     )
     slopeCount = parts.slopeCount
     gableCount = parts.gableCount
+    if (building) {
+      chimneyCount = appendGabledChimneys(
+        building.id,
+        obb,
+        yEaves,
+        riseExag,
+        verticalExaggeration,
+        positions,
+        indices,
+        push,
+      )
+    }
   } else {
     // skillion — sheds only
     const { halfU, halfV, corners } = footprintOBB(ring, EAVES_OVERHANG_M)
@@ -514,9 +637,12 @@ export function createRoofGeometry(
       geo.addGroup(slopeCount + parapetCount, detailCount, 2)
     }
   } else {
-    // mat 0 = slopes; mat 1 = gable ends (wall or wood)
+    // mat 0 = slopes; mat 1 = gable ends; mat 2 = chimneys
     geo.addGroup(0, slopeCount, 0)
     if (gableCount > 0) geo.addGroup(slopeCount, gableCount, 1)
+    if (chimneyCount > 0) {
+      geo.addGroup(slopeCount + gableCount, chimneyCount, 2)
+    }
   }
   return geo
 }

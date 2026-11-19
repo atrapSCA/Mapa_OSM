@@ -15,6 +15,7 @@ import {
   FLAT_PARAPET_COLOR,
 } from './flatRoofVariants'
 import {
+  CHIMNEY_COLOR,
   createRoofGeometry,
   GABLE_WOOD_COLOR,
   gableIsWood,
@@ -230,6 +231,18 @@ export function BuildingsLayer({
     [],
   )
 
+  const chimneyMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: CHIMNEY_COLOR,
+        flatShading: true,
+        roughness: 0.9,
+        metalness: 0.04,
+        side: THREE.DoubleSide,
+      }),
+    [],
+  )
+
   const windowMat = useMemo(() => getWindowMaterial(), [])
 
   useEffect(() => {
@@ -249,6 +262,7 @@ export function BuildingsLayer({
       woodGableMat.dispose()
       flatParapetMat.dispose()
       flatDetailMat.dispose()
+      chimneyMat.dispose()
     }
   }, [
     flatMaterials,
@@ -256,6 +270,7 @@ export function BuildingsLayer({
     woodGableMat,
     flatParapetMat,
     flatDetailMat,
+    chimneyMat,
   ])
 
   if (!show) return null
@@ -293,6 +308,8 @@ export function BuildingsLayer({
             nGroups >= 3
               ? [slopeMat, flatParapetMat, flatDetailMat]
               : [slopeMat, flatParapetMat]
+        } else if (shape === 'gabled' && nGroups >= 3) {
+          roofMats = [slopeMat, gableMat, chimneyMat]
         } else if (nGroups === 2) {
           roofMats = [slopeMat, gableMat]
         }
