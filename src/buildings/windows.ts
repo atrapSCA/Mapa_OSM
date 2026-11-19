@@ -52,10 +52,65 @@ export type StreetEdge = {
   mid: [number, number]
 }
 
-/** Edge midpoint closest to any sampled road point; else longest edge. */
+const ROAD_CELL = 30
+
+/** Spatial index of road samples — build once per region, not per building. */
+export class RoadProximityIndex {
+  private cells = new Map<string, [number, number][]>()
+
+  constructor(roads: RoadSegment[] | null | undefined, step = 10) {
+    if (!roads) return
+    for (const seg of roads) {
+      const sp = seg.points
+      if (!sp || sp.length < 2) continue
+      for (let i = 0; i < sp.length - 1; i++) {
+        const p0 = sp[i]
+        const p1 = sp[i + 1]
+        const segLen = Math.hypot(p1[0] - p0[0], p1[1] - p0[1])
+        const steps = Math.max(1, Math.ceil(segLen / step))
+        for (let s = 0; s <= steps; s++) {
+          const t = s / steps
+          const x = p0[0] + (p1[0] - p0[0]) * t
+          const z = p0[1] + (p1[1] - p0[1]) * t
+          const key = `${Math.floor(x / ROAD_CELL)}:${Math.floor(z / ROAD_CELL)}`
+          let bucket = this.cells.get(key)
+          if (!bucket) {
+            bucket = []
+            this.cells.set(key, bucket)
+          }
+          bucket.push([x, z])
+        }
+      }
+    }
+  }
+
+  nearestDist(x: number, z: number, maxDist: number): number {
+    const r = Math.ceil(maxDist / ROAD_CELL)
+    const cx = Math.floor(x / ROAD_CELL)
+    const cz = Math.floor(z / ROAD_CELL)
+    let best = Infinity
+    for (let ix = cx - r; ix <= cx + r; ix++) {
+      for (let iz = cz - r; iz <= cz + r; iz++) {
+        const bucket = this.cells.get(`${ix}:${iz}`)
+        if (!bucket) continue
+        for (const p of bucket) {
+          const d = Math.hypot(x - p[0], z - p[1])
+          if (d < best) best = d
+        }
+      }
+    }
+    return best
+  }
+
+  get empty(): boolean {
+    return this.cells.size === 0
+  }
+}
+
+/** Edge midpoint closest to a road; else longest edge. */
 export function streetFacingEdge(
   ring: [number, number][],
-  roads: RoadSegment[] | null | undefined,
+  roads: RoadProximityIndex | null | undefined,
 ): StreetEdge | null {
   const pts = openRing(ring)
   if (pts.length < 3) return null
@@ -76,31 +131,16 @@ export function streetFacingEdge(
     }
   }
 
-  if (!roads || roads.length === 0) return bestLong
+  if (!roads || roads.empty) return bestLong
 
   let bestDist = Infinity
   let bestEdge: StreetEdge | null = null
   for (const e of edges) {
     if (e.len < 2.5) continue
-    for (const seg of roads) {
-      const sp = seg.points
-      if (!sp || sp.length < 2) continue
-      for (let i = 0; i < sp.length - 1; i++) {
-        const p0 = sp[i]
-        const p1 = sp[i + 1]
-        const segLen = Math.hypot(p1[0] - p0[0], p1[1] - p0[1])
-        const steps = Math.max(1, Math.ceil(segLen / 7))
-        for (let s = 0; s <= steps; s++) {
-          const t = s / steps
-          const x = p0[0] + (p1[0] - p0[0]) * t
-          const z = p0[1] + (p1[1] - p0[1]) * t
-          const d = Math.hypot(e.mid[0] - x, e.mid[1] - z)
-          if (d < bestDist) {
-            bestDist = d
-            bestEdge = e
-          }
-        }
-      }
+    const d = roads.nearestDist(e.mid[0], e.mid[1], 25)
+    if (d < bestDist) {
+      bestDist = d
+      bestEdge = e
     }
   }
 
@@ -135,7 +175,7 @@ export function createWindowGeometry(
   yBase: number,
   wallHExag: number,
   roofShape: RoofShape,
-  roads?: RoadSegment[] | null,
+  roads?: RoadProximityIndex | null,
 ): THREE.BufferGeometry | null {
   const kind = normalizeKind(b.kind)
   if (kind === 'garage') return null
@@ -259,7 +299,7 @@ export function createGarageDoorGeometry(
   b: Building,
   yBase: number,
   wallHExag: number,
-  roads?: RoadSegment[] | null,
+  roads?: RoadProximityIndex | null,
 ): THREE.BufferGeometry | null {
   if (!shouldHaveGarageDoor(b)) return null
   const ring = openRing(b.rings[0] ?? [])

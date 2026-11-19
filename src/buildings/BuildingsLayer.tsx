@@ -31,6 +31,7 @@ import {
   createWindowGeometry,
   getGarageDoorMaterial,
   getWindowMaterial,
+  RoadProximityIndex,
 } from './windows'
 
 const CLICK_MAX_MOVE_PX = 4
@@ -112,7 +113,10 @@ export function BuildingsLayer({
     )
   }, [buildings.buildings, isKindOn, kindEnabled])
 
-  const roadSegs = roads?.roads ?? null
+  const roadIndex = useMemo(
+    () => new RoadProximityIndex(roads?.roads ?? null),
+    [roads],
+  )
 
   const parts = useMemo(() => {
     const map = new Map<
@@ -155,18 +159,18 @@ export function BuildingsLayer({
         yBase,
         wallHExag,
         shape,
-        roadSegs,
+        roadIndex,
       )
       const garageDoor = createGarageDoorGeometry(
         b,
         yBase,
         wallHExag,
-        roadSegs,
+        roadIndex,
       )
       map.set(b.id, { walls, roof, windows, garageDoor })
     }
     return map
-  }, [visible, terrain, exaggeration, roadSegs])
+  }, [visible, terrain, exaggeration, roadIndex])
 
   /** Muted CZ façade colours — shared material per hex. */
   const facadeMaterials = useMemo(() => {
