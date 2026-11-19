@@ -18,56 +18,101 @@ function hash01(id: string): number {
   return (h >>> 0) / 4294967295
 }
 
+type FootprintMetrics = {
+  aspect: number
+  fill: number
+  longM: number
+  shortM: number
+  verts: number
+  area: number
+  /** True when OBB pitched roof would look nonsensical (L/U/irregular). */
+  complex: boolean
+  /** Near-square enough for a pyramidal roof. */
+  squarish: boolean
+  /** Elongated rectangle — gable along long axis. */
+  elongated: boolean
+}
+
+function footprintMetrics(ringIn: [number, number][]): FootprintMetrics {
+  const pts = openRing(ringIn)
+  const obb = footprintOBB(pts, 0)
+  const longM = Math.max(obb.halfU, obb.halfV) * 2
+  const shortM = Math.min(obb.halfU, obb.halfV) * 2
+  const aspect = longM / Math.max(shortM, 0.15)
+  const area = ringAreaAbs(ringIn)
+  const obbArea = Math.max(longM * shortM, 1e-6)
+  const fill = area / obbArea
+  const complex = fill < 0.78 || pts.length > 8
+  const squarish = aspect <= 1.35 && fill >= 0.85 && pts.length <= 6
+  const elongated = aspect >= 1.25 && fill >= 0.78 && pts.length <= 8
+  return { aspect, fill, longM, shortM, verts: pts.length, area, complex, squarish, elongated }
+}
+
 /**
- * Pick roof style from kind + id (OSM rarely tags roof:shape in CZ).
- * Skillion only for sheds/halls — on houses it reads as a broken half-roof.
+ * Pick roof from footprint geometry first, kind/hash second.
+ * Pyramidal only on near-square; L-shapes and sparse OBB fill → flat.
  */
 export function roofShapeForBuilding(b: Building): RoofShape {
   const kind = normalizeKind(b.kind)
   const h = hash01(b.id)
+  const ring = b.rings[0]
+  if (!ring || ring.length < 3) return 'flat'
+  const m = footprintMetrics(ring)
 
-  if (kind === 'church') return 'pyramidal'
+  if (kind === 'church') return m.squarish ? 'pyramidal' : m.elongated ? 'gabled' : 'flat'
+
+  // Irregular / L / U — pitched OBB looks like a tent over empty yard
+  if (m.complex) {
+    if (kind === 'house' && m.fill >= 0.7 && m.elongated) return 'gabled'
+    return 'flat'
+  }
 
   if (kind === 'industrial' || kind === 'garage') {
+    if (m.elongated && h < 0.55) return 'gabled'
     if (h < 0.35) return 'skillion'
-    if (h < 0.75) return 'gabled'
     return 'flat'
   }
 
   if (kind === 'farm') {
-    return h < 0.7 ? 'gabled' : 'skillion'
+    if (m.elongated) return 'gabled'
+    if (h < 0.4) return 'skillion'
+    return 'flat'
   }
 
-  // Houses — full pitched roofs only
+  // Houses: long → gable; square → pyramid or gable; never pyramid on long
   if (kind === 'house') {
-    if (h < 0.62) return 'gabled'
-    return 'pyramidal'
+    if (m.elongated) return 'gabled'
+    if (m.squarish) return h < 0.55 ? 'pyramidal' : 'gabled'
+    return 'gabled'
   }
 
+  // Apartments / commercial — large blocks mostly flat (like reference towns)
   if (
     kind === 'apartments' ||
     kind === 'commercial' ||
     kind === 'public' ||
     kind === 'building'
   ) {
-    if (h < 0.55) return 'gabled'
-    if (h < 0.82) return 'pyramidal'
+    if (m.longM > 28 || m.area > 450) return h < 0.2 && m.elongated ? 'gabled' : 'flat'
+    if (m.elongated && h < 0.4) return 'gabled'
+    if (m.squarish && h < 0.55) return 'pyramidal'
     return 'flat'
   }
 
-  if (h < 0.55) return 'gabled'
-  if (h < 0.85) return 'pyramidal'
+  if (m.elongated) return 'gabled'
+  if (m.squarish && h < 0.5) return 'pyramidal'
   return 'flat'
 }
 
-/** Roof rise in metres before vertical exaggeration. */
+/** Roof rise from short span — keeps pitch natural on long buildings. */
 export function roofRiseMeters(b: Building, shape: RoofShape): number {
   if (shape === 'flat') return 0.15
-  const area = ringAreaAbs(b.rings[0] ?? [])
-  const span = Math.sqrt(Math.max(area, 1))
-  if (shape === 'pyramidal') return Math.min(14, Math.max(3.5, span * 0.35))
-  if (shape === 'gabled') return Math.min(11, Math.max(3.0, span * 0.28))
-  return Math.min(9, Math.max(2.5, span * 0.22))
+  const ring = b.rings[0] ?? []
+  const m = footprintMetrics(ring)
+  const short = Math.max(m.shortM, 2)
+  if (shape === 'pyramidal') return Math.min(7, Math.max(2.2, short * 0.42))
+  if (shape === 'gabled') return Math.min(6.5, Math.max(2.0, short * 0.38))
+  return Math.min(5.5, Math.max(1.8, short * 0.32))
 }
 
 function openRing(ring: [number, number][]): [number, number][] {
@@ -241,6 +286,30 @@ function buildGabledOBB(
   }
 }
 
+/** Flat roof following the real footprint (works for L/U via earcut). */
+function buildFlatRoof(
+  ring: [number, number][],
+  yEaves: number,
+  positions: number[],
+  indices: number[],
+  push: (x: number, y: number, z: number) => number,
+): void {
+  const y = yEaves + 0.04
+  const base = ring.map(([x, z]) => push(x, y, z))
+  if (ring.length <= 4) {
+    for (let i = 1; i < base.length - 1; i++) {
+      pushTri(positions, indices, base[0], base[i], base[i + 1], 0, 1, 0)
+    }
+    return
+  }
+  const contour = ring.map(([x, z]) => new THREE.Vector2(x, z))
+  const faces = THREE.ShapeUtils.triangulateShape(contour, [])
+  for (const face of faces) {
+    const [a, b, c] = face
+    pushTri(positions, indices, base[a], base[b], base[c], 0, 1, 0)
+  }
+}
+
 /**
  * Roof mesh on eaves plane yEaves. Y already includes exaggeration for rise.
  * UV in world metres (X/Z) for roof skins.
@@ -265,12 +334,19 @@ export function createRoofGeometry(
     return i
   }
 
-  if (shape === 'flat') {
-    const base = ring.map(([x, z]) => push(x, yEaves + 0.04, z))
-    for (let i = 1; i < base.length - 1; i++) {
-      pushTri(positions, indices, base[0], base[i], base[i + 1], 0, 1, 0)
-    }
-  } else if (shape === 'pyramidal') {
+  // Guard: never put a tent/OBB gable on a complex footprint
+  const metrics = footprintMetrics(ringIn)
+  let resolved: RoofShape = shape
+  if (
+    (shape === 'pyramidal' && !metrics.squarish) ||
+    (shape === 'gabled' && metrics.complex && !metrics.elongated)
+  ) {
+    resolved = 'flat'
+  }
+
+  if (resolved === 'flat') {
+    buildFlatRoof(ring, yEaves, positions, indices, push)
+  } else if (resolved === 'pyramidal') {
     const [cx, cz] = footprintCentroid(ringIn)
     const apex = push(cx, yEaves + riseExag, cz)
     // Slight outward offset of eaves for overhang feel on irregular rings
@@ -288,7 +364,7 @@ export function createRoofGeometry(
       const mz = (positions[i0 * 3 + 2] + positions[i1 * 3 + 2]) / 2 - cz
       pushTri(positions, indices, i0, i1, apex, mx, 0.35, mz)
     }
-  } else if (shape === 'gabled') {
+  } else if (resolved === 'gabled') {
     buildGabledOBB(
       footprintOBB(ring, EAVES_OVERHANG_M),
       yEaves,
