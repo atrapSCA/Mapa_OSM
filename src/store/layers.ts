@@ -90,7 +90,7 @@ export const useLayers = create<LayerState>()(
       waterways: true,
       nature: true,
       buildings: true,
-      buildingSkins: true,
+      buildingSkins: false,
       roads: true,
       paths: true,
       labels: false,
@@ -114,7 +114,7 @@ export const useLayers = create<LayerState>()(
       },
     }),
     {
-      name: 'mapa-osm-layers-v6-skins',
+      name: 'mapa-osm-layers-v7-facades',
       partialize: (s): PersistedLayers => ({
         terrain: s.terrain,
         hypsometric: s.hypsometric,
@@ -141,7 +141,7 @@ export const useLayers = create<LayerState>()(
           ...p,
           waterPolygons: p.waterPolygons ?? true,
           waterways: p.waterways ?? true,
-          buildingSkins: p.buildingSkins ?? true,
+          buildingSkins: p.buildingSkins ?? false,
           kindEnabled: p.kindEnabled ?? {},
         }
       },

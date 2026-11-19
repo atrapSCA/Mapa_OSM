@@ -279,14 +279,17 @@ export function BuildingsLayer({
         const selected = b.id === selectedId
 
         const facadeColor = facadeColorForBuilding(b)
-        let wallMat: THREE.Material
-        if (skinsOn) {
+        // Flat pastel colour for façades (skin albedo was washing towns to grey).
+        // Textured skins only on industrial / garage / farm.
+        let wallMat: THREE.Material =
+          facadeMaterials.get(facadeColor) ??
+          facadeMaterials.values().next().value!
+        if (
+          skinsOn &&
+          (kind === 'industrial' || kind === 'garage' || kind === 'farm')
+        ) {
           const preset = presetForKind(kind)
           wallMat = getSkinMaterial(preset.wall, 'wall', facadeColor)
-        } else {
-          wallMat =
-            facadeMaterials.get(facadeColor) ??
-            facadeMaterials.values().next().value!
         }
 
         const shape = roofShapeForBuilding(b)
