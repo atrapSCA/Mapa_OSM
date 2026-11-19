@@ -11,6 +11,10 @@ import { useSelection } from '@/store/selection'
 import { buildingBaseY, buildingGeometry, geometryMaxY } from './buildingGeom'
 import { BuildingBubble } from './BuildingBubble'
 import {
+  FLAT_DETAIL_COLOR,
+  FLAT_PARAPET_COLOR,
+} from './flatRoofVariants'
+import {
   createRoofGeometry,
   GABLE_WOOD_COLOR,
   gableIsWood,
@@ -140,6 +144,8 @@ export function BuildingsLayer({
         yEaves,
         shape,
         riseM * exaggeration,
+        b,
+        exaggeration,
       )
       const yBase = buildingBaseY(b, terrain, exaggeration)
       const wallHExag = yEaves - yBase
@@ -200,6 +206,30 @@ export function BuildingsLayer({
     [],
   )
 
+  const flatParapetMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: FLAT_PARAPET_COLOR,
+        flatShading: true,
+        roughness: 0.9,
+        metalness: 0.06,
+        side: THREE.DoubleSide,
+      }),
+    [],
+  )
+
+  const flatDetailMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: FLAT_DETAIL_COLOR,
+        flatShading: true,
+        roughness: 0.85,
+        metalness: 0.15,
+        side: THREE.DoubleSide,
+      }),
+    [],
+  )
+
   const windowMat = useMemo(() => getWindowMaterial(), [])
 
   useEffect(() => {
@@ -217,8 +247,16 @@ export function BuildingsLayer({
       for (const m of flatMaterials.values()) m.dispose()
       for (const m of roofSlopeMaterials.values()) m.dispose()
       woodGableMat.dispose()
+      flatParapetMat.dispose()
+      flatDetailMat.dispose()
     }
-  }, [flatMaterials, roofSlopeMaterials, woodGableMat])
+  }, [
+    flatMaterials,
+    roofSlopeMaterials,
+    woodGableMat,
+    flatParapetMat,
+    flatDetailMat,
+  ])
 
   if (!show) return null
 
@@ -247,12 +285,17 @@ export function BuildingsLayer({
         const slopeMat =
           roofSlopeMaterials.get(slopeColor) ??
           roofSlopeMaterials.values().next().value!
-        // When skins on, still use CZ colour variety (tint over plain); gable = wall or wood
         const gableMat = gableIsWood(b) ? woodGableMat : wallMat
-        const roofMats: THREE.Material | THREE.Material[] =
-          part.roof && part.roof.groups.length > 1
-            ? [slopeMat, gableMat]
-            : slopeMat
+        const nGroups = part.roof?.groups.length ?? 0
+        let roofMats: THREE.Material | THREE.Material[] = slopeMat
+        if (shape === 'flat' && nGroups >= 2) {
+          roofMats =
+            nGroups >= 3
+              ? [slopeMat, flatParapetMat, flatDetailMat]
+              : [slopeMat, flatParapetMat]
+        } else if (nGroups === 2) {
+          roofMats = [slopeMat, gableMat]
+        }
 
         return (
           <group key={b.id}>

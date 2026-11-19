@@ -2,6 +2,10 @@ import * as THREE from 'three'
 import type { Building } from '@shared/tileFormat'
 import { normalizeKind } from '@shared/osmLabels'
 import { footprintCentroid, ringAreaAbs } from './buildingGeom'
+import {
+  appendFlatRoofDetails,
+  flatRoofVariantForBuilding,
+} from './flatRoofVariants'
 
 /** Roof shapes inspired by OSMBuildings / Simple 3D Buildings (subset). */
 export type RoofShape = 'flat' | 'gabled' | 'pyramidal' | 'skillion'
@@ -25,7 +29,7 @@ export const CZ_ROOF_COLORS = [
   '#7d3b2f', // muted red-brown
 ] as const
 
-/** Flat / membrane roofs — greys through near-black. */
+/** Flat / membrane roofs — greys, charcoal, olive-drab (CZ panelák). */
 export const CZ_FLAT_ROOF_COLORS = [
   '#6a6a6a',
   '#5a5a5a',
@@ -39,6 +43,10 @@ export const CZ_FLAT_ROOF_COLORS = [
   '#3a3a3a',
   '#707070',
   '#262626',
+  '#5a5c52', // olive grey
+  '#4a4e46',
+  '#6b6e62',
+  '#3e423c',
 ] as const
 
 /** Occasional timber gable boarding. */
@@ -382,12 +390,15 @@ function buildFlatRoof(
 /**
  * Roof mesh on eaves plane yEaves. Y already includes exaggeration for rise.
  * UV in world metres (X/Z) for roof skins.
+ * Flat roofs: mat0 deck, mat1 parapet, mat2 clutter (10 hashed variants).
  */
 export function createRoofGeometry(
   ringIn: [number, number][],
   yEaves: number,
   shape: RoofShape,
   riseExag: number,
+  building?: Building,
+  verticalExaggeration = 2.2,
 ): THREE.BufferGeometry | null {
   const ring = openRing(ringIn)
   if (ring.length < 3) return null
@@ -411,10 +422,31 @@ export function createRoofGeometry(
 
   let slopeCount = 0
   let gableCount = 0
+  let parapetCount = 0
+  let detailCount = 0
 
   if (resolved === 'flat') {
     buildFlatRoof(ring, yEaves, positions, indices, push)
     slopeCount = indices.length
+    if (building) {
+      const parapetIdx: number[] = []
+      const detailIdx: number[] = []
+      const yDeck = yEaves + 0.04
+      appendFlatRoofDetails(
+        flatRoofVariantForBuilding(building),
+        ring,
+        footprintOBB(ring, 0),
+        yDeck,
+        verticalExaggeration,
+        push,
+        parapetIdx,
+        detailIdx,
+      )
+      parapetCount = parapetIdx.length
+      detailCount = detailIdx.length
+      for (const i of parapetIdx) indices.push(i)
+      for (const i of detailIdx) indices.push(i)
+    }
   } else if (resolved === 'pyramidal') {
     const [cx, cz] = footprintCentroid(ringIn)
     const apex = push(cx, yEaves + riseExag, cz)
@@ -476,8 +508,17 @@ export function createRoofGeometry(
   geo.setIndex(indices)
   geo.computeVertexNormals()
   geo.clearGroups()
-  // mat 0 = slopes / flat deck; mat 1 = gable ends (wall or wood)
-  geo.addGroup(0, slopeCount, 0)
-  if (gableCount > 0) geo.addGroup(slopeCount, gableCount, 1)
+  if (resolved === 'flat' && (parapetCount > 0 || detailCount > 0)) {
+    // mat 0 = deck, 1 = parapet, 2 = vents/HVAC/solar
+    geo.addGroup(0, slopeCount, 0)
+    if (parapetCount > 0) geo.addGroup(slopeCount, parapetCount, 1)
+    if (detailCount > 0) {
+      geo.addGroup(slopeCount + parapetCount, detailCount, 2)
+    }
+  } else {
+    // mat 0 = slopes; mat 1 = gable ends (wall or wood)
+    geo.addGroup(0, slopeCount, 0)
+    if (gableCount > 0) geo.addGroup(slopeCount, gableCount, 1)
+  }
   return geo
 }
