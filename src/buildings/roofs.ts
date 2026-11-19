@@ -85,32 +85,88 @@ function openRing(ring: [number, number][]): [number, number][] {
   return ring.slice()
 }
 
-/** Axis-aligned footprint rectangle (low-poly OBB stand-in). */
-function footprintRect(pts: [number, number][]): {
-  minX: number
-  maxX: number
-  minZ: number
-  maxZ: number
+/** Angle of the longest ring edge — primary axis for pitched roofs. */
+function longestEdgeAngle(pts: [number, number][]): number {
+  let best = 0
+  let bestLen = -1
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i]
+    const b = pts[(i + 1) % pts.length]
+    const dx = b[0] - a[0]
+    const dz = b[1] - a[1]
+    const len = dx * dx + dz * dz
+    if (len > bestLen) {
+      bestLen = len
+      best = Math.atan2(dz, dx)
+    }
+  }
+  return best
+}
+
+/**
+ * Oriented bounding box of the footprint (aligned to longest edge).
+ * World AABB made roofs look rotated ~30–45° on street-angled buildings.
+ */
+function footprintOBB(pts: [number, number][]): {
+  /** Unit along longest edge (ridge candidate). */
+  ux: number
+  uz: number
+  /** Unit perpendicular in XZ. */
+  vx: number
+  vz: number
+  halfU: number
+  halfV: number
   cx: number
   cz: number
+  /** Four eaves corners in CCW order: -u-v, +u-v, +u+v, -u+v. */
+  corners: [number, number][]
 } {
-  let minX = Infinity
-  let maxX = -Infinity
-  let minZ = Infinity
-  let maxZ = -Infinity
+  const angle = longestEdgeAngle(pts)
+  const ux = Math.cos(angle)
+  const uz = Math.sin(angle)
+  const vx = -uz
+  const vz = ux
+
+  let minU = Infinity
+  let maxU = -Infinity
+  let minV = Infinity
+  let maxV = -Infinity
   for (const [x, z] of pts) {
-    minX = Math.min(minX, x)
-    maxX = Math.max(maxX, x)
-    minZ = Math.min(minZ, z)
-    maxZ = Math.max(maxZ, z)
+    const u = x * ux + z * uz
+    const v = x * vx + z * vz
+    minU = Math.min(minU, u)
+    maxU = Math.max(maxU, u)
+    minV = Math.min(minV, v)
+    maxV = Math.max(maxV, v)
   }
+
+  const midU = (minU + maxU) / 2
+  const midV = (minV + maxV) / 2
+  const halfU = (maxU - minU) / 2
+  const halfV = (maxV - minV) / 2
+  const cx = midU * ux + midV * vx
+  const cz = midU * uz + midV * vz
+
+  const corner = (du: number, dv: number): [number, number] => [
+    cx + du * ux + dv * vx,
+    cz + du * uz + dv * vz,
+  ]
+
   return {
-    minX,
-    maxX,
-    minZ,
-    maxZ,
-    cx: (minX + maxX) / 2,
-    cz: (minZ + maxZ) / 2,
+    ux,
+    uz,
+    vx,
+    vz,
+    halfU,
+    halfV,
+    cx,
+    cz,
+    corners: [
+      corner(-halfU, -halfV),
+      corner(halfU, -halfV),
+      corner(halfU, halfV),
+      corner(-halfU, halfV),
+    ],
   }
 }
 
@@ -151,53 +207,47 @@ export function createRoofGeometry(
       indices.push(base[i], base[(i + 1) % base.length], apex)
     }
   } else if (shape === 'gabled') {
-    // Rectangular gable on footprint AABB — robust for irregular OSM rings.
-    const { minX, maxX, minZ, maxZ, cx, cz } = footprintRect(ring)
-    const dx = maxX - minX
-    const dz = maxZ - minZ
+    // Gable on OBB aligned to longest footprint edge (not world AABB).
+    const { halfU, halfV, cx, cz, ux, uz, vx, vz, corners } = footprintOBB(ring)
+    const [p0, p1, p2, p3] = corners
     const yR = yEaves + riseExag
-    if (dx >= dz) {
-      // Ridge parallel to X
-      const a = push(minX, yEaves, minZ)
-      const b = push(maxX, yEaves, minZ)
-      const c = push(maxX, yEaves, maxZ)
-      const d = push(minX, yEaves, maxZ)
-      const r0 = push(minX, yR, cz)
-      const r1 = push(maxX, yR, cz)
-      indices.push(a, b, r1, a, r1, r0) // south slope
-      indices.push(d, r0, r1, d, r1, c) // north slope
-      indices.push(a, r0, d) // west gable
-      indices.push(b, c, r1) // east gable
+    const a = push(p0[0], yEaves, p0[1])
+    const b = push(p1[0], yEaves, p1[1])
+    const c = push(p2[0], yEaves, p2[1])
+    const d = push(p3[0], yEaves, p3[1])
+    if (halfU >= halfV) {
+      // Ridge along long axis u, midpoint of short sides (±v)
+      const r0 = push(cx - halfU * ux, yR, cz - halfU * uz)
+      const r1 = push(cx + halfU * ux, yR, cz + halfU * uz)
+      indices.push(a, b, r1, a, r1, r0) // -v slope
+      indices.push(d, r0, r1, d, r1, c) // +v slope
+      indices.push(a, r0, d) // -u gable
+      indices.push(b, c, r1) // +u gable
     } else {
-      // Ridge parallel to Z
-      const a = push(minX, yEaves, minZ)
-      const b = push(maxX, yEaves, minZ)
-      const c = push(maxX, yEaves, maxZ)
-      const d = push(minX, yEaves, maxZ)
-      const r0 = push(cx, yR, minZ)
-      const r1 = push(cx, yR, maxZ)
-      indices.push(a, r0, r1, a, r1, d) // west slope
-      indices.push(b, c, r1, b, r1, r0) // east slope
-      indices.push(a, b, r0) // south gable
-      indices.push(d, r1, c) // north gable
+      // Ridge along v (footprint taller than long-edge span)
+      const r0 = push(cx - halfV * vx, yR, cz - halfV * vz)
+      const r1 = push(cx + halfV * vx, yR, cz + halfV * vz)
+      indices.push(a, r0, r1, a, r1, d) // -u slope
+      indices.push(b, c, r1, b, r1, r0) // +u slope
+      indices.push(a, b, r0) // -v gable
+      indices.push(d, r1, c) // +v gable
     }
   } else {
-    // skillion — single slope across AABB short axis
-    const { minX, maxX, minZ, maxZ } = footprintRect(ring)
-    const dx = maxX - minX
-    const dz = maxZ - minZ
+    // skillion — single slope across short OBB axis
+    const { halfU, halfV, corners } = footprintOBB(ring)
+    const [p0, p1, p2, p3] = corners
     const yHi = yEaves + riseExag
-    if (dx >= dz) {
-      const a = push(minX, yEaves, minZ)
-      const b = push(maxX, yEaves, minZ)
-      const c = push(maxX, yHi, maxZ)
-      const d = push(minX, yHi, maxZ)
+    if (halfU >= halfV) {
+      const a = push(p0[0], yEaves, p0[1])
+      const b = push(p1[0], yEaves, p1[1])
+      const c = push(p2[0], yHi, p2[1])
+      const d = push(p3[0], yHi, p3[1])
       indices.push(a, b, c, a, c, d)
     } else {
-      const a = push(minX, yEaves, minZ)
-      const b = push(maxX, yHi, minZ)
-      const c = push(maxX, yHi, maxZ)
-      const d = push(minX, yEaves, maxZ)
+      const a = push(p0[0], yEaves, p0[1])
+      const b = push(p1[0], yHi, p1[1])
+      const c = push(p2[0], yHi, p2[1])
+      const d = push(p3[0], yEaves, p3[1])
       indices.push(a, b, c, a, c, d)
     }
   }
