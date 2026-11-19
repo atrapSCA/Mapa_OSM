@@ -13,20 +13,20 @@ export type RoofShape = 'flat' | 'gabled' | 'pyramidal' | 'skillion'
 /** Eaves overhang beyond wall footprint (metres). */
 const EAVES_OVERHANG_M = 0.3
 
-/** Typical CZ clay tile hues — reds and browns (pitched roofs). */
+/** Typical CZ clay tiles — terracotta / orange-red (aerial town look). */
 export const CZ_ROOF_COLORS = [
-  '#a83a2c', // classic brick red
-  '#8f2f24', // deep red
-  '#b54a32', // terracotta
-  '#9c4030', // brick
-  '#7a3224', // dark red-brown
-  '#8b4a2b', // brown tile
-  '#6e3a28', // dark brown
-  '#a0522d', // sienna
-  '#c45c3e', // lighter terracotta
-  '#5c3320', // chocolate
-  '#914d36', // rust brown
-  '#7d3b2f', // muted red-brown
+  '#c45a3a', // bright terracotta
+  '#b84e32', // classic tile
+  '#a84430', // brick red
+  '#d06440', // lighter orange-red
+  '#9c3e2c', // deeper red
+  '#b85838', // warm terracotta
+  '#8f4030', // dark tile
+  '#c86848', // sunlit clay
+  '#a85038', // rust terracotta
+  '#bc5434', // medium clay
+  '#7a3828', // aged dark red
+  '#d07050', // pale terracotta
 ] as const
 
 /** Flat / membrane roofs — mid greys & olive (no near-black — looks unnatural). */
@@ -50,8 +50,8 @@ export const CZ_FLAT_ROOF_COLORS = [
 /** Occasional timber gable boarding. */
 export const GABLE_WOOD_COLOR = '#6b4423'
 
-/** Brick chimney stacks on classic pitched roofs. */
-export const CHIMNEY_COLOR = '#5c4030'
+/** Chimneys on pitched roofs — usually plastered light (aerial CZ towns). */
+export const CHIMNEY_COLOR = '#e8e4dc'
 
 function hash01(id: string): number {
   let h = 2166136261
