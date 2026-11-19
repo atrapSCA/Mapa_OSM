@@ -70,7 +70,11 @@ export function Scene({ region }: { region: LoadedRegion }) {
       />
       <Lights />
       <Helpers />
-      <TerrainMesh terrain={region.terrain} />
+      <TerrainMesh
+        terrain={region.terrain}
+        nature={region.nature}
+        water={region.water}
+      />
       {region.nature && (
         <NatureLayer nature={region.nature} terrain={region.terrain} />
       )}

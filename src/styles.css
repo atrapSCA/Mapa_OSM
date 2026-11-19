@@ -80,6 +80,44 @@ body,
   color: var(--muted);
 }
 
+.style-switch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.style-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.style-btn strong {
+  font-size: 0.88rem;
+}
+
+.style-btn span {
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.style-btn.on {
+  border-color: var(--accent-dim);
+  background: rgba(124, 184, 122, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(124, 184, 122, 0.25);
+}
+
 .toggle-list {
   display: flex;
   flex-direction: column;

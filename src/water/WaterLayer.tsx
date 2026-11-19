@@ -111,9 +111,13 @@ export function WaterLayer({
   const showWater = useLayers((s) => s.water)
   const showPolygons = useLayers((s) => s.waterPolygons)
   const showWays = useLayers((s) => s.waterways)
+  const areaStyle = useLayers((s) => s.areaStyle)
   const kindEnabled = useLayers((s) => s.kindEnabled)
   const isKindOn = useLayers((s) => s.isKindOn)
   const exaggeration = useLayers((s) => s.verticalExaggeration)
+
+  // V2 bakes water polygons into terrain texture; ribbons stay in both modes.
+  const drapePolygons = areaStyle === 'v1-drape'
 
   const visibleWays = useMemo(() => {
     if (!showWater || !showWays) return [] as Waterway[]
@@ -123,7 +127,7 @@ export function WaterLayer({
   }, [showWater, showWays, water.waterways, kindEnabled, isKindOn])
 
   const polygonsByKind = useMemo(() => {
-    if (!showWater || !showPolygons) {
+    if (!showWater || !showPolygons || !drapePolygons) {
       return [] as [string, WaterPolygon[]][]
     }
     const map = new Map<string, WaterPolygon[]>()
@@ -135,7 +139,14 @@ export function WaterLayer({
       else map.set(k, [p])
     }
     return [...map.entries()]
-  }, [showWater, showPolygons, water.polygons, kindEnabled, isKindOn])
+  }, [
+    showWater,
+    showPolygons,
+    drapePolygons,
+    water.polygons,
+    kindEnabled,
+    isKindOn,
+  ])
 
   if (!showWater) return null
   if (visibleWays.length === 0 && polygonsByKind.length === 0) return null

@@ -3,8 +3,7 @@ import type { ContinuousTerrainJson } from '@shared/tileFormat'
 import { lonLatToLocalMeters } from '@shared/geo'
 
 /**
- * Continuous DEM mesh. Nature/water areas are separate draped layers
- * (same smooth OSM outlines) — not painted onto this grid.
+ * Continuous DEM mesh with UVs for landcover texture (V2).
  */
 export function continuousTerrainToGeometry(
   terrain: ContinuousTerrainJson,
@@ -18,6 +17,7 @@ export function continuousTerrainToGeometry(
   const { bbox } = terrain
   const positions = new Float32Array(nX * nZ * 3)
   const colors = new Float32Array(nX * nZ * 3)
+  const uvs = new Float32Array(nX * nZ * 2)
   const indices: number[] = []
 
   for (let row = 0; row < nZ; row++) {
@@ -38,6 +38,10 @@ export function continuousTerrainToGeometry(
       positions[o] = local.x
       positions[o + 1] = elev * verticalExaggeration
       positions[o + 2] = local.z
+
+      // UV matches landcover canvas (v grows south with DEM row)
+      uvs[i * 2] = u
+      uvs[i * 2 + 1] = v
 
       if (useHypsometric && terrain.colors?.[i]) {
         const hex = terrain.colors[i]
@@ -66,6 +70,7 @@ export function continuousTerrainToGeometry(
   const geo = new THREE.BufferGeometry()
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2))
   geo.setIndex(indices)
   geo.computeVertexNormals()
   return geo

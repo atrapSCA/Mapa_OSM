@@ -6,6 +6,9 @@ import {
   type KindGroup,
 } from '@shared/osmLabels'
 
+/** V1 = drapované polygony; V2 = landcover textura na terénu. */
+export type AreaStyle = 'v1-drape' | 'v2-texture'
+
 /**
  * Temporary experiment toggles — master layers + OSM subcategory kinds.
  * Persisted to localStorage so choices survive reload.
@@ -18,34 +21,36 @@ export type LayerState = {
   grid: boolean
   softLight: boolean
   water: boolean
-  /** Master for water polygon meshes (lakes, ponds…). */
   waterPolygons: boolean
-  /** Master for waterway ribbons (streams, rivers…). */
   waterways: boolean
   nature: boolean
   buildings: boolean
   roads: boolean
   paths: boolean
   labels: boolean
-  /** `roads:primary`, `nature:forest`, … — missing = on */
+  /** How nature + water polygons are rendered. */
+  areaStyle: AreaStyle
   kindEnabled: Record<string, boolean>
   verticalExaggeration: number
   setLayer: <
     K extends keyof Omit<
       LayerState,
-      'setLayer' | 'setExaggeration' | 'toggleKind' | 'isKindOn'
+      'setLayer' | 'setExaggeration' | 'toggleKind' | 'isKindOn' | 'setAreaStyle'
     >,
   >(
     key: K,
     value: LayerState[K],
   ) => void
   setExaggeration: (v: number) => void
+  setAreaStyle: (style: AreaStyle) => void
   toggle: (
     key: keyof Omit<
       LayerState,
       | 'setLayer'
       | 'setExaggeration'
+      | 'setAreaStyle'
       | 'verticalExaggeration'
+      | 'areaStyle'
       | 'toggle'
       | 'kindEnabled'
       | 'toggleKind'
@@ -72,6 +77,7 @@ type PersistedLayers = Pick<
   | 'roads'
   | 'paths'
   | 'labels'
+  | 'areaStyle'
   | 'kindEnabled'
   | 'verticalExaggeration'
 >
@@ -93,10 +99,12 @@ export const useLayers = create<LayerState>()(
       roads: true,
       paths: true,
       labels: false,
+      areaStyle: 'v1-drape',
       kindEnabled: {},
       verticalExaggeration: 2.2,
       setLayer: (key, value) => set({ [key]: value }),
       setExaggeration: (verticalExaggeration) => set({ verticalExaggeration }),
+      setAreaStyle: (areaStyle) => set({ areaStyle }),
       toggle: (key) => set((s) => ({ [key]: !s[key] })),
       toggleKind: (group, kind) => {
         const key = kindKey(group, kind)
@@ -113,7 +121,7 @@ export const useLayers = create<LayerState>()(
       },
     }),
     {
-      name: 'mapa-osm-layers-v2',
+      name: 'mapa-osm-layers-v3',
       partialize: (s): PersistedLayers => ({
         terrain: s.terrain,
         hypsometric: s.hypsometric,
@@ -129,6 +137,7 @@ export const useLayers = create<LayerState>()(
         roads: s.roads,
         paths: s.paths,
         labels: s.labels,
+        areaStyle: s.areaStyle,
         kindEnabled: s.kindEnabled,
         verticalExaggeration: s.verticalExaggeration,
       }),
@@ -137,9 +146,9 @@ export const useLayers = create<LayerState>()(
         return {
           ...current,
           ...p,
-          // Ensure new flags exist after upgrade from v1 storage
           waterPolygons: p.waterPolygons ?? true,
           waterways: p.waterways ?? true,
+          areaStyle: p.areaStyle ?? 'v1-drape',
           kindEnabled: p.kindEnabled ?? {},
         }
       },

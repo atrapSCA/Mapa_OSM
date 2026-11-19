@@ -79,12 +79,16 @@ export function NatureLayer({
   terrain: ContinuousTerrainJson
 }) {
   const show = useLayers((s) => s.nature)
+  const areaStyle = useLayers((s) => s.areaStyle)
   const kindEnabled = useLayers((s) => s.kindEnabled)
   const isKindOn = useLayers((s) => s.isKindOn)
   const exaggeration = useLayers((s) => s.verticalExaggeration)
 
+  // V2 paints nature into terrain landcover texture — no separate meshes.
+  const useDrape = areaStyle === 'v1-drape'
+
   const byKind = useMemo(() => {
-    if (!show) return [] as [string, NaturePolygon[]][]
+    if (!show || !useDrape) return [] as [string, NaturePolygon[]][]
     const map = new Map<string, NaturePolygon[]>()
     for (const p of nature.polygons) {
       const k = normalizeKind(p.kind)
@@ -94,9 +98,9 @@ export function NatureLayer({
       else map.set(k, [p])
     }
     return [...map.entries()]
-  }, [show, nature.polygons, kindEnabled, isKindOn])
+  }, [show, useDrape, nature.polygons, kindEnabled, isKindOn])
 
-  if (!show || byKind.length === 0) return null
+  if (!show || !useDrape || byKind.length === 0) return null
 
   return (
     <group>

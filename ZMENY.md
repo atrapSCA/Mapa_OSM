@@ -4,6 +4,16 @@
 
 ---
 
+## 0.0.21 — 2026-11-19
+
+### Přidáno
+- **Dva režimy ploch** v menu „Režim ploch“:
+  - **V1 — drape** (git tag `v1-drape`): oddělené densifikované polygony na DEM
+  - **V2 — textura**: landcover 2048² na jednom terénním meshi (příroda + vodní plochy)
+- Toky/silnice zůstávají ribbon v obou režimech
+
+---
+
 ## 0.0.20 — 2026-11-19
 
 ### Změněno
