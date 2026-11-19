@@ -153,7 +153,7 @@ function buildQuery(bbox: BBox): string {
   // No hiking relations here — their skel members used to overwrite tagged
   // highways and demote real roads (e.g. secondary) into the path layer.
   return `
-[out:json][timeout:90];
+[out:json][timeout:300];
 (
   way["highway"~"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service|road|track|footway|path|pedestrian|steps|bridleway|cycleway|corridor)$"](${bb});
 );

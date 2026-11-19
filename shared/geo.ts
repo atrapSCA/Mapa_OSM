@@ -79,13 +79,13 @@ export function lonLatToLocalMeters(
 export const REGIONS = {
   rakovnik: {
     id: 'rakovnik',
-    name: 'Rakovník 10×10 km',
+    name: 'Rakovník 25×25 km',
     center: { lon: 13.7333, lat: 50.1042 },
-    sizeMeters: 10_000,
+    sizeMeters: 25_000,
     /** Terrain tile zoom — ~2–3 km/tile at lat 50. */
     zoom: 13,
-    /** Continuous mesh cells across the region (~30 m; nature subdivides further). */
-    meshResolution: 320,
+    /** Continuous mesh cells across the region (~31 m at 25 km). */
+    meshResolution: 800,
     verticalExaggeration: 2.2,
   },
 } as const

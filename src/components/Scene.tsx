@@ -95,15 +95,15 @@ export function Scene({ region }: { region: LoadedRegion }) {
   return (
     <Canvas
       camera={{
-        position: [4200, midElev + 3800, 5200],
+        position: [9000, midElev + 7500, 11000],
         fov: 48,
         near: 1,
-        far: 80000,
+        far: 120000,
       }}
       gl={{ antialias: true, logarithmicDepthBuffer: true }}
     >
       <color attach="background" args={['#8fb0a8']} />
-      <fog attach="fog" args={['#a8c0b4', 6000, 22000]} />
+      <fog attach="fog" args={['#a8c0b4', 12000, 45000]} />
       <Sky
         distance={450000}
         sunPosition={[1, 0.35, 0.2]}
@@ -137,7 +137,7 @@ export function Scene({ region }: { region: LoadedRegion }) {
         target={[0, midElev * 0.4, 0]}
         maxPolarAngle={Math.PI * 0.49}
         minDistance={400}
-        maxDistance={18000}
+        maxDistance={42000}
         enableDamping
       />
     </Canvas>

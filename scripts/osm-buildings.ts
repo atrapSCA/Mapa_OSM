@@ -136,7 +136,7 @@ export function buildingHeightMeters(tags: Record<string, string>): number {
 function buildQuery(bbox: BBox): string {
   const bb = `${bbox.south},${bbox.west},${bbox.north},${bbox.east}`
   return `
-[out:json][timeout:120];
+[out:json][timeout:300];
 (
   way["building"](${bb});
   relation["building"](${bb});
@@ -298,7 +298,8 @@ export async function buildBuildingLayer(opts: {
   const kindCounts: Record<string, number> = {}
 
   const MIN_AREA = 20 // m² — drop tiny sheds / junk footprints
-  const MAX_BUILDINGS = 7000
+  // 25×25 km has ~30k+ footprints; batched rendering can handle this.
+  const MAX_BUILDINGS = 35_000
 
   const push = (b: Building) => {
     const area = ringAreaAbs(b.rings[0] ?? [])

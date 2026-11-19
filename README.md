@@ -1,7 +1,7 @@
 # Mapa OSM — 3D low-poly svět
 
 Lokální 3D mapa z výškových dat (DEM) + později OpenStreetMap.  
-**Teď:** 10×10 km kolem Rakovníku. **Cíl:** stejný pipeline pro celý svět, data na PC serveru.
+**Teď:** 25×25 km kolem Rakovníku. **Cíl:** stejný pipeline pro celý svět, data na PC serveru.
 
 ## Proč dlaždice (tiles)
 

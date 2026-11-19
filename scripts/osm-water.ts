@@ -56,7 +56,7 @@ function buildQuery(bbox: BBox): string {
   // Overpass bbox: south,west,north,east
   const bb = `${bbox.south},${bbox.west},${bbox.north},${bbox.east}`
   return `
-[out:json][timeout:90];
+[out:json][timeout:300];
 (
   way["natural"="water"](${bb});
   way["landuse"="reservoir"](${bb});

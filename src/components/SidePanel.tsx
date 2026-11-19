@@ -199,7 +199,7 @@ export function SidePanel({
       <div className="brand">
         <h1>Mapa OSM</h1>
         <p>
-          3D low-poly mapa ze výškových dlaždic. Nejdřív Rakovník 10×10 km —
+          3D low-poly mapa ze výškových dlaždic. Rakovník 25×25 km —
           stejný formát později pro celý svět.
         </p>
       </div>

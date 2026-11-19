@@ -6,7 +6,7 @@ export type LandcoverPoly = {
   color: string
 }
 
-const DEFAULT_SIZE = 1536
+const DEFAULT_SIZE = 2048
 
 /** Local XZ → canvas pixel (py=0 = north = minZ, matches DEM UV v). */
 function toPx(

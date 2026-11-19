@@ -71,7 +71,7 @@ export function natureKindFromTags(
 function buildQuery(bbox: BBox): string {
   const bb = `${bbox.south},${bbox.west},${bbox.north},${bbox.east}`
   return `
-[out:json][timeout:120];
+[out:json][timeout:300];
 (
   way["natural"~"^(wood|scrub|grassland|heath|wetland|sand|beach|bare_rock|scree|shingle)$"](${bb});
   way["landuse"~"^(forest|meadow|grass|farmland|orchard|vineyard|allotments|cemetery|recreation_ground|village_green)$"](${bb});
