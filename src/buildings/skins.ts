@@ -120,8 +120,10 @@ const materialCache = new Map<string, THREE.MeshStandardMaterial>()
 export function getSkinMaterial(
   skinId: string,
   role: 'wall' | 'roof',
+  /** Optional plaster tint (walls) — muted façade colour. */
+  tintHex?: string,
 ): THREE.MeshStandardMaterial {
-  const key = `${role}:${skinId}`
+  const key = `${role}:${skinId}:${tintHex ?? 'white'}`
   const hit = materialCache.get(key)
   if (hit) return hit
 
@@ -139,7 +141,7 @@ export function getSkinMaterial(
 
   const mat = new THREE.MeshStandardMaterial({
     map: map ?? undefined,
-    color: '#ffffff',
+    color: tintHex ?? '#ffffff',
     flatShading: true,
     roughness: role === 'roof' ? 0.92 : 0.85,
     metalness: skinId.includes('metal') ? 0.35 : 0.04,

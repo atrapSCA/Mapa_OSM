@@ -23,20 +23,9 @@ import {
   roofRiseMeters,
   roofShapeForBuilding,
 } from './roofs'
+import { facadeColorForBuilding } from './facades'
 import { getSkinMaterial, presetForKind } from './skins'
 import { createWindowGeometry, getWindowMaterial } from './windows'
-
-const BUILDING_COLORS: Record<string, string> = {
-  building: '#d4cfc4',
-  house: '#e0d5c4',
-  apartments: '#c8c0b4',
-  industrial: '#a8a098',
-  commercial: '#d8cfc0',
-  church: '#c4b8a8',
-  public: '#d0c8b8',
-  garage: '#b8b0a4',
-  farm: '#c4b8a0',
-}
 
 const CLICK_MAX_MOVE_PX = 4
 
@@ -156,21 +145,23 @@ export function BuildingsLayer({
     return map
   }, [visible, terrain, exaggeration])
 
-  const flatMaterials = useMemo(() => {
+  /** Muted CZ façade colours — shared material per hex. */
+  const facadeMaterials = useMemo(() => {
     const map = new Map<string, THREE.MeshStandardMaterial>()
-    for (const b of visible) {
-      const k = normalizeKind(b.kind)
-      if (map.has(k)) continue
-      map.set(
-        k,
-        new THREE.MeshStandardMaterial({
-          color: BUILDING_COLORS[k] ?? BUILDING_COLORS.building,
+    const get = (color: string) => {
+      let m = map.get(color)
+      if (!m) {
+        m = new THREE.MeshStandardMaterial({
+          color,
           flatShading: true,
           roughness: 0.88,
           metalness: 0.04,
-        }),
-      )
+        })
+        map.set(color, m)
+      }
+      return m
     }
+    for (const b of visible) get(facadeColorForBuilding(b))
     return map
   }, [visible])
 
@@ -257,7 +248,7 @@ export function BuildingsLayer({
 
   useEffect(() => {
     return () => {
-      for (const m of flatMaterials.values()) m.dispose()
+      for (const m of facadeMaterials.values()) m.dispose()
       for (const m of roofSlopeMaterials.values()) m.dispose()
       woodGableMat.dispose()
       flatParapetMat.dispose()
@@ -265,7 +256,7 @@ export function BuildingsLayer({
       chimneyMat.dispose()
     }
   }, [
-    flatMaterials,
+    facadeMaterials,
     roofSlopeMaterials,
     woodGableMat,
     flatParapetMat,
@@ -287,12 +278,15 @@ export function BuildingsLayer({
         const kind = normalizeKind(b.kind)
         const selected = b.id === selectedId
 
+        const facadeColor = facadeColorForBuilding(b)
         let wallMat: THREE.Material
         if (skinsOn) {
           const preset = presetForKind(kind)
-          wallMat = getSkinMaterial(preset.wall, 'wall')
+          wallMat = getSkinMaterial(preset.wall, 'wall', facadeColor)
         } else {
-          wallMat = flatMaterials.get(kind)!
+          wallMat =
+            facadeMaterials.get(facadeColor) ??
+            facadeMaterials.values().next().value!
         }
 
         const shape = roofShapeForBuilding(b)
