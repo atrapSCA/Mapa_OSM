@@ -1,20 +1,15 @@
 import { useMemo } from 'react'
-import * as THREE from 'three'
 import type {
   ContinuousTerrainJson,
   WaterLayerJson,
-  WaterPolygon,
-  Waterway,
 } from '@shared/tileFormat'
 import { normalizeKind } from '@shared/osmLabels'
 import { ribbonGeometry } from '@/geo/ribbonGeometry'
-import { drapePolygonGeometry, mergeGeometries } from '@/geo/drapePolygon'
+import { clipPolylineOutsidePolygons } from '@/geo/clipPolyline'
 import { useLayers } from '@/store/layers'
 
 const WATER_COLOR = '#6eb4d4'
-const WATER_COLOR_DEEP = '#4a9bb8'
 const LIFT_WAY = 1.35
-const LIFT_POLY = 1.6
 
 const WATERWAY_COLORS: Record<string, string> = {
   river: '#5aa8c8',
@@ -25,20 +20,21 @@ const WATERWAY_COLORS: Record<string, string> = {
 }
 
 function WaterwayMesh({
-  way,
+  points,
+  width,
   terrain,
   exaggeration,
   color,
 }: {
-  way: Waterway
+  points: [number, number][]
+  width: number
   terrain: ContinuousTerrainJson
   exaggeration: number
   color: string
 }) {
   const geometry = useMemo(
-    () =>
-      ribbonGeometry(way.points, way.width, terrain, exaggeration, LIFT_WAY),
-    [way, terrain, exaggeration],
+    () => ribbonGeometry(points, width, terrain, exaggeration, LIFT_WAY),
+    [points, width, terrain, exaggeration],
   )
   if (!geometry) return null
   return (
@@ -60,47 +56,7 @@ function WaterwayMesh({
   )
 }
 
-function WaterPolygonsMesh({
-  polygons,
-  terrain,
-  exaggeration,
-  color,
-}: {
-  polygons: WaterPolygon[]
-  terrain: ContinuousTerrainJson
-  exaggeration: number
-  color: string
-}) {
-  const geometry = useMemo(() => {
-    const geos: THREE.BufferGeometry[] = []
-    for (const p of polygons) {
-      const g = drapePolygonGeometry(p.rings, terrain, exaggeration, LIFT_POLY)
-      if (g) geos.push(g)
-    }
-    return mergeGeometries(geos)
-  }, [polygons, terrain, exaggeration])
-
-  if (!geometry) return null
-  return (
-    <mesh geometry={geometry} frustumCulled={false} renderOrder={2}>
-      <meshStandardMaterial
-        color={color}
-        roughness={0.3}
-        metalness={0.08}
-        flatShading
-        transparent
-        opacity={0.9}
-        depthWrite
-        depthTest
-        side={THREE.DoubleSide}
-        polygonOffset
-        polygonOffsetFactor={-12}
-        polygonOffsetUnits={-12}
-      />
-    </mesh>
-  )
-}
-
+/** Water polygons → terrain texture; ribbons clipped so they vanish under lakes. */
 export function WaterLayer({
   water,
   terrain,
@@ -109,66 +65,68 @@ export function WaterLayer({
   terrain: ContinuousTerrainJson
 }) {
   const showWater = useLayers((s) => s.water)
-  const showPolygons = useLayers((s) => s.waterPolygons)
   const showWays = useLayers((s) => s.waterways)
-  const areaStyle = useLayers((s) => s.areaStyle)
+  const showPolygons = useLayers((s) => s.waterPolygons)
   const kindEnabled = useLayers((s) => s.kindEnabled)
   const isKindOn = useLayers((s) => s.isKindOn)
   const exaggeration = useLayers((s) => s.verticalExaggeration)
 
-  // V2 bakes water polygons into terrain texture; ribbons stay in both modes.
-  const drapePolygons = areaStyle === 'v1-drape'
-
-  const visibleWays = useMemo(() => {
-    if (!showWater || !showWays) return [] as Waterway[]
-    return water.waterways.filter((w) =>
-      isKindOn('waterways', normalizeKind(w.kind)),
+  const lakePolys = useMemo(() => {
+    if (!showPolygons) return []
+    return water.polygons.filter((p) =>
+      isKindOn('waterPolygons', normalizeKind(p.kind)),
     )
-  }, [showWater, showWays, water.waterways, kindEnabled, isKindOn])
+  }, [showPolygons, water.polygons, kindEnabled, isKindOn])
 
-  const polygonsByKind = useMemo(() => {
-    if (!showWater || !showPolygons || !drapePolygons) {
-      return [] as [string, WaterPolygon[]][]
+  const ribbonSegments = useMemo(() => {
+    if (!showWater || !showWays) return [] as {
+      id: string
+      points: [number, number][]
+      width: number
+      kind: string
+    }[]
+
+    const out: {
+      id: string
+      points: [number, number][]
+      width: number
+      kind: string
+    }[] = []
+
+    for (const w of water.waterways) {
+      if (!isKindOn('waterways', normalizeKind(w.kind))) continue
+      const parts = clipPolylineOutsidePolygons(w.points, lakePolys)
+      parts.forEach((pts, i) => {
+        out.push({
+          id: `${w.id}-${i}`,
+          points: pts,
+          width: w.width,
+          kind: w.kind,
+        })
+      })
     }
-    const map = new Map<string, WaterPolygon[]>()
-    for (const p of water.polygons) {
-      const k = normalizeKind(p.kind)
-      if (!isKindOn('waterPolygons', k)) continue
-      const list = map.get(k)
-      if (list) list.push(p)
-      else map.set(k, [p])
-    }
-    return [...map.entries()]
+    return out
   }, [
     showWater,
-    showPolygons,
-    drapePolygons,
-    water.polygons,
+    showWays,
+    water.waterways,
+    lakePolys,
     kindEnabled,
     isKindOn,
   ])
 
-  if (!showWater) return null
-  if (visibleWays.length === 0 && polygonsByKind.length === 0) return null
+  if (!showWater || ribbonSegments.length === 0) return null
 
   return (
     <group>
-      {visibleWays.map((w) => (
+      {ribbonSegments.map((seg) => (
         <WaterwayMesh
-          key={w.id}
-          way={w}
+          key={seg.id}
+          points={seg.points}
+          width={seg.width}
           terrain={terrain}
           exaggeration={exaggeration}
-          color={WATERWAY_COLORS[normalizeKind(w.kind)] ?? WATER_COLOR}
-        />
-      ))}
-      {polygonsByKind.map(([kind, polys]) => (
-        <WaterPolygonsMesh
-          key={`poly-${kind}`}
-          polygons={polys}
-          terrain={terrain}
-          exaggeration={exaggeration}
-          color={kind === 'reservoir' ? WATER_COLOR_DEEP : WATER_COLOR}
+          color={WATERWAY_COLORS[normalizeKind(seg.kind)] ?? WATER_COLOR}
         />
       ))}
     </group>

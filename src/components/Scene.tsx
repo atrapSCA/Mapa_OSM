@@ -2,7 +2,6 @@ import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Sky, Grid } from '@react-three/drei'
 import type { LoadedRegion } from '@/hooks/useRegionManifest'
 import { TerrainMesh } from '@/terrain/TerrainTiles'
-import { NatureLayer } from '@/nature/NatureLayer'
 import { WaterLayer } from '@/water/WaterLayer'
 import { RoadsLayer } from '@/roads/RoadsLayer'
 import { useLayers } from '@/store/layers'
@@ -75,9 +74,6 @@ export function Scene({ region }: { region: LoadedRegion }) {
         nature={region.nature}
         water={region.water}
       />
-      {region.nature && (
-        <NatureLayer nature={region.nature} terrain={region.terrain} />
-      )}
       {region.water && (
         <WaterLayer water={region.water} terrain={region.terrain} />
       )}

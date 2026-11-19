@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import * as THREE from 'three'
 import type {
   ContinuousTerrainJson,
   NatureLayerJson,
@@ -50,7 +51,6 @@ export function TerrainMesh({
   const wireframe = useLayers((s) => s.wireframe)
   const flatShading = useLayers((s) => s.flatShading)
   const verticalExaggeration = useLayers((s) => s.verticalExaggeration)
-  const areaStyle = useLayers((s) => s.areaStyle)
   const showNature = useLayers((s) => s.nature)
   const showWater = useLayers((s) => s.water)
   const showWaterPolygons = useLayers((s) => s.waterPolygons)
@@ -64,7 +64,7 @@ export function TerrainMesh({
   )
 
   const naturePolys = useMemo((): LandcoverPoly[] => {
-    if (areaStyle !== 'v2-texture' || !showNature || !nature) return []
+    if (!showNature || !nature) return []
     const out: LandcoverPoly[] = []
     for (const p of nature.polygons) {
       const k = normalizeKind(p.kind)
@@ -75,17 +75,10 @@ export function TerrainMesh({
       })
     }
     return out
-  }, [areaStyle, showNature, nature, kindEnabled, isKindOn])
+  }, [showNature, nature, kindEnabled, isKindOn])
 
   const waterPolys = useMemo((): LandcoverPoly[] => {
-    if (
-      areaStyle !== 'v2-texture' ||
-      !showWater ||
-      !showWaterPolygons ||
-      !water
-    ) {
-      return []
-    }
+    if (!showWater || !showWaterPolygons || !water) return []
     const out: LandcoverPoly[] = []
     for (const p of water.polygons) {
       const k = normalizeKind(p.kind)
@@ -96,40 +89,44 @@ export function TerrainMesh({
       })
     }
     return out
-  }, [
-    areaStyle,
-    showWater,
-    showWaterPolygons,
-    water,
-    kindEnabled,
-    isKindOn,
-  ])
+  }, [showWater, showWaterPolygons, water, kindEnabled, isKindOn])
 
-  const landcoverMap = useMemo(() => {
-    if (areaStyle !== 'v2-texture') return null
-    return buildLandcoverTexture(
-      terrain,
-      naturePolys,
-      waterPolys,
-      hypsometric,
-    )
-  }, [areaStyle, terrain, naturePolys, waterPolys, hypsometric])
+  const [landcoverMap, setLandcoverMap] = useState<THREE.CanvasTexture | null>(
+    null,
+  )
 
   useEffect(() => {
-    return () => {
-      landcoverMap?.dispose()
+    let cancelled = false
+    let tex: THREE.CanvasTexture | null = null
+    try {
+      tex = buildLandcoverTexture(
+        terrain,
+        naturePolys,
+        waterPolys,
+        hypsometric,
+      )
+      if (!cancelled) setLandcoverMap(tex)
+      else tex.dispose()
+    } catch (err) {
+      console.error('Landcover texture failed', err)
+      if (!cancelled) setLandcoverMap(null)
     }
-  }, [landcoverMap])
+    return () => {
+      cancelled = true
+      tex?.dispose()
+      setLandcoverMap((current) => (current === tex ? null : current))
+    }
+  }, [terrain, naturePolys, waterPolys, hypsometric])
 
   if (!show) return null
-
-  const useTexture = areaStyle === 'v2-texture' && landcoverMap
 
   return (
     <mesh geometry={geometry} frustumCulled={false}>
       <meshStandardMaterial
-        map={useTexture ? landcoverMap : null}
-        vertexColors={!useTexture}
+        key={landcoverMap ? `tex-${landcoverMap.uuid}` : 'pending'}
+        map={landcoverMap ?? undefined}
+        vertexColors={!landcoverMap}
+        color="#ffffff"
         flatShading={flatShading}
         wireframe={wireframe}
         roughness={0.92}

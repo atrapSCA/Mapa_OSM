@@ -198,28 +198,6 @@ export function SidePanel({
       </div>
 
       <div className="section">
-        <h2>Režim ploch</h2>
-        <div className="style-switch">
-          <button
-            type="button"
-            className={`style-btn${layers.areaStyle === 'v1-drape' ? ' on' : ''}`}
-            onClick={() => layers.setAreaStyle('v1-drape')}
-          >
-            <strong>V1 — drape</strong>
-            <span>Oddělené polygony na DEM (tag v1-drape)</span>
-          </button>
-          <button
-            type="button"
-            className={`style-btn${layers.areaStyle === 'v2-texture' ? ' on' : ''}`}
-            onClick={() => layers.setAreaStyle('v2-texture')}
-          >
-            <strong>V2 — textura</strong>
-            <span>Landcover na terénu, 1 mesh</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="section">
         <h2>Vrstvy — teď</h2>
         <div className="toggle-list">
           {TOGGLES.filter((t) => t.phase === 'now').map((t) => {

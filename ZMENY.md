@@ -4,6 +4,37 @@
 
 ---
 
+## 0.0.25 — 2026-11-19
+
+### Opraveno
+- Potoky už neprosvítají přes jezera/rybníky — ribbon se ořízne mimo vodní polygony
+
+---
+
+## 0.0.24 — 2026-11-19
+
+### Změněno
+- **V1 drape zrušen** — jediný režim je landcover textura (bývalé V2)
+- Odstraněn přepínač režimu, `NatureLayer`, `drapePolygon`
+- Příroda + vodní plochy jen v textuře terénu; toky zůstávají ribbon
+
+---
+
+## 0.0.23 — 2026-11-19
+
+### Opraveno
+- V2: mřížka na „prázdných“ plochách — pozadí už není kreslené po DEM buňkách (`fillRect`), ale jednolitá barva
+
+---
+
+## 0.0.22 — 2026-11-19
+
+### Opraveno
+- V2: terén/lesy zmizely (zbývaly jen silnice) — StrictMode dispose + reuse mrtvé CanvasTexture
+- Landcover se staví v `useEffect`, `flipY=false`, spolehlivější fill polygonů
+
+---
+
 ## 0.0.21 — 2026-11-19
 
 ### Přidáno
