@@ -50,7 +50,7 @@ function footprintMetrics(ringIn: [number, number][]): FootprintMetrics {
 
 /**
  * Pick roof from footprint geometry first, kind/hash second.
- * Pyramidal only on near-square; L-shapes and sparse OBB fill → flat.
+ * Pyramidal almost never in CZ towns — only church towers; else gabled/flat/skillion.
  */
 export function roofShapeForBuilding(b: Building): RoofShape {
   const kind = normalizeKind(b.kind)
@@ -59,7 +59,11 @@ export function roofShapeForBuilding(b: Building): RoofShape {
   if (!ring || ring.length < 3) return 'flat'
   const m = footprintMetrics(ring)
 
-  if (kind === 'church') return m.squarish ? 'pyramidal' : m.elongated ? 'gabled' : 'flat'
+  // Historical towers / churches — only place pyramidal makes sense in CZ
+  if (kind === 'church') {
+    if (m.squarish) return 'pyramidal'
+    return m.elongated ? 'gabled' : 'flat'
+  }
 
   // Irregular / L / U — pitched OBB looks like a tent over empty yard
   if (m.complex) {
@@ -79,14 +83,10 @@ export function roofShapeForBuilding(b: Building): RoofShape {
     return 'flat'
   }
 
-  // Houses: long → gable; square → pyramid or gable; never pyramid on long
-  if (kind === 'house') {
-    if (m.elongated) return 'gabled'
-    if (m.squarish) return h < 0.55 ? 'pyramidal' : 'gabled'
-    return 'gabled'
-  }
+  // Houses — gabled (Czech default), never pyramidal
+  if (kind === 'house') return 'gabled'
 
-  // Apartments / commercial — large blocks mostly flat (like reference towns)
+  // Apartments / commercial — large blocks mostly flat
   if (
     kind === 'apartments' ||
     kind === 'commercial' ||
@@ -94,13 +94,11 @@ export function roofShapeForBuilding(b: Building): RoofShape {
     kind === 'building'
   ) {
     if (m.longM > 28 || m.area > 450) return h < 0.2 && m.elongated ? 'gabled' : 'flat'
-    if (m.elongated && h < 0.4) return 'gabled'
-    if (m.squarish && h < 0.55) return 'pyramidal'
+    if (m.elongated && h < 0.45) return 'gabled'
     return 'flat'
   }
 
   if (m.elongated) return 'gabled'
-  if (m.squarish && h < 0.5) return 'pyramidal'
   return 'flat'
 }
 
@@ -334,15 +332,11 @@ export function createRoofGeometry(
     return i
   }
 
-  // Guard: never put a tent/OBB gable on a complex footprint
+  // Guard: pitched OBB only where footprint allows; pyramidal only if still requested
   const metrics = footprintMetrics(ringIn)
   let resolved: RoofShape = shape
-  if (
-    (shape === 'pyramidal' && !metrics.squarish) ||
-    (shape === 'gabled' && metrics.complex && !metrics.elongated)
-  ) {
-    resolved = 'flat'
-  }
+  if (shape === 'pyramidal' && !metrics.squarish) resolved = 'flat'
+  if (shape === 'gabled' && metrics.complex && !metrics.elongated) resolved = 'flat'
 
   if (resolved === 'flat') {
     buildFlatRoof(ring, yEaves, positions, indices, push)
