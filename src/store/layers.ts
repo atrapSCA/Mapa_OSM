@@ -114,7 +114,7 @@ export const useLayers = create<LayerState>()(
       },
     }),
     {
-      name: 'mapa-osm-layers-v5-skins',
+      name: 'mapa-osm-layers-v6-skins',
       partialize: (s): PersistedLayers => ({
         terrain: s.terrain,
         hypsometric: s.hypsometric,

@@ -155,17 +155,27 @@ export function BuildingsLayer({
     return map
   }, [visible])
 
-  /** Darker flat roof colour when skins off. */
+  /** Contrasting roof colours when skins off — slopes must read clearly. */
   const flatRoofMaterials = useMemo(() => {
+    const roofColors: Record<string, string> = {
+      house: '#8b3a2a',
+      apartments: '#6a5a52',
+      building: '#7a4a3a',
+      commercial: '#5a5850',
+      industrial: '#4a5058',
+      church: '#5a4038',
+      public: '#6a5848',
+      garage: '#555860',
+      farm: '#6a4028',
+    }
     const map = new Map<string, THREE.MeshStandardMaterial>()
     for (const b of visible) {
       const k = normalizeKind(b.kind)
       if (map.has(k)) continue
-      const base = BUILDING_COLORS[k] ?? BUILDING_COLORS.building
       map.set(
         k,
         new THREE.MeshStandardMaterial({
-          color: new THREE.Color(base).multiplyScalar(0.72),
+          color: roofColors[k] ?? '#6a4030',
           flatShading: true,
           roughness: 0.92,
           metalness: 0.05,

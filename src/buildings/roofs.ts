@@ -17,37 +17,63 @@ function hash01(id: string): number {
 
 /**
  * Pick roof style from kind + id (OSM rarely tags roof:shape in CZ).
- * Heuristics loosely match OSMBuildings / Streets GL S3DB defaults.
+ * Biased toward pitched roofs so the scene is not all flat boxes.
  */
 export function roofShapeForBuilding(b: Building): RoofShape {
   const kind = normalizeKind(b.kind)
   const h = hash01(b.id)
+
   if (kind === 'church') return 'pyramidal'
+
+  // Halls / sheds — often flat or single-slope
   if (kind === 'industrial' || kind === 'garage') {
-    return h < 0.35 ? 'skillion' : 'flat'
+    if (h < 0.45) return 'skillion'
+    if (h < 0.7) return 'gabled'
+    return 'flat'
   }
-  if (kind === 'apartments' || kind === 'commercial' || kind === 'public') {
-    return h < 0.2 ? 'gabled' : 'flat'
+
+  // Farm — almost never flat
+  if (kind === 'farm') {
+    return h < 0.55 ? 'gabled' : 'skillion'
   }
-  if (kind === 'farm') return h < 0.5 ? 'gabled' : 'skillion'
+
+  // Houses — always pitched
   if (kind === 'house') {
-    if (h < 0.55) return 'gabled'
-    if (h < 0.8) return 'pyramidal'
+    if (h < 0.5) return 'gabled'
+    if (h < 0.78) return 'pyramidal'
     return 'skillion'
   }
+
+  // Apartments / commercial / public — mostly pitched for variety
+  // (real cities mix flat panels + older gables)
+  if (
+    kind === 'apartments' ||
+    kind === 'commercial' ||
+    kind === 'public' ||
+    kind === 'building'
+  ) {
+    if (h < 0.42) return 'gabled'
+    if (h < 0.68) return 'pyramidal'
+    if (h < 0.85) return 'skillion'
+    return 'flat'
+  }
+
+  // Fallback
   if (h < 0.4) return 'gabled'
-  if (h < 0.55) return 'pyramidal'
+  if (h < 0.7) return 'pyramidal'
+  if (h < 0.9) return 'skillion'
   return 'flat'
 }
 
-/** Roof rise in metres before vertical exaggeration. */
+/** Roof rise in metres before vertical exaggeration — kept bold so slopes read from above. */
 export function roofRiseMeters(b: Building, shape: RoofShape): number {
-  if (shape === 'flat') return 0.12
+  if (shape === 'flat') return 0.15
   const area = ringAreaAbs(b.rings[0] ?? [])
   const span = Math.sqrt(Math.max(area, 1))
-  if (shape === 'pyramidal') return Math.min(8, Math.max(2.2, span * 0.22))
-  if (shape === 'gabled') return Math.min(6, Math.max(1.8, span * 0.18))
-  return Math.min(5, Math.max(1.2, span * 0.12))
+  // Stronger pitch than S3DB defaults so gables/pyramids are obvious in the viewer
+  if (shape === 'pyramidal') return Math.min(14, Math.max(3.5, span * 0.35))
+  if (shape === 'gabled') return Math.min(11, Math.max(3.0, span * 0.28))
+  return Math.min(9, Math.max(2.5, span * 0.22))
 }
 
 function openRing(ring: [number, number][]): [number, number][] {

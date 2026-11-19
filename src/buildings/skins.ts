@@ -126,15 +126,20 @@ export function getSkinMaterial(
   if (hit) return hit
 
   const def = SKINS[skinId]
-  const map = loadSkinTexture(skinId)
-  // UV already in metres → texture.repeat = 1 / tileSize
+  const baseMap = loadSkinTexture(skinId)
+  // Clone so wall/roof can have independent repeat without fighting the cache
+  const map = baseMap ? baseMap.clone() : null
   if (map && def) {
+    map.wrapS = THREE.RepeatWrapping
+    map.wrapT = THREE.RepeatWrapping
+    map.colorSpace = THREE.SRGBColorSpace
     map.repeat.set(1 / def.tileWidthM, 1 / def.tileHeightM)
+    map.needsUpdate = true
   }
 
   const mat = new THREE.MeshStandardMaterial({
     map: map ?? undefined,
-    color: map ? '#ffffff' : '#c8c0b4',
+    color: '#ffffff',
     flatShading: true,
     roughness: role === 'roof' ? 0.92 : 0.85,
     metalness: skinId.includes('metal') ? 0.35 : 0.04,
