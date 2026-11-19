@@ -80,6 +80,17 @@ export function buildingBaseY(
   return footprintMaxElev(ring, terrain) * exaggeration + 0.08
 }
 
+/** Highest world-Y of a mesh — used to seat the roof on the real wall top. */
+export function geometryMaxY(geo: THREE.BufferGeometry): number {
+  const pos = geo.getAttribute('position') as THREE.BufferAttribute | undefined
+  if (!pos || pos.count === 0) return 0
+  let maxY = -Infinity
+  for (let i = 0; i < pos.count; i++) {
+    maxY = Math.max(maxY, pos.getY(i))
+  }
+  return Number.isFinite(maxY) ? maxY : 0
+}
+
 /**
  * Extruded walls. `wallHeightM` is unexaggerated metres to eaves
  * (full building height when no separate pitched roof).

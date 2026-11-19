@@ -8,10 +8,7 @@ import type {
 import { normalizeKind } from '@shared/osmLabels'
 import { useLayers } from '@/store/layers'
 import { useSelection } from '@/store/selection'
-import {
-  buildingBaseY,
-  buildingGeometry,
-} from './buildingGeom'
+import { buildingGeometry, geometryMaxY } from './buildingGeom'
 import { BuildingBubble } from './BuildingBubble'
 import {
   createRoofGeometry,
@@ -118,14 +115,18 @@ export function BuildingsLayer({
       const shape = roofShapeForBuilding(b)
       const riseM = roofRiseMeters(b, shape)
       const fullH = Math.max(2.5, Math.min(80, b.height))
-      // Pitched roofs sit on eaves; walls stop below the ridge.
-      const wallH =
-        shape === 'flat' ? fullH : Math.max(2.2, fullH - riseM * 0.85)
-      const walls = buildingGeometry(b, terrain, exaggeration, wallH, true)
+      // Full-height walls; pitched roof is a hat seated on the measured wall top
+      // (avoids floating roofs from eaves-height mismatches).
+      const walls = buildingGeometry(
+        b,
+        terrain,
+        exaggeration,
+        fullH,
+        true, // drop extruded caps — roof mesh replaces them
+      )
       if (!walls) continue
 
-      const baseY = buildingBaseY(b, terrain, exaggeration)
-      const yEaves = baseY + wallH * exaggeration
+      const yEaves = geometryMaxY(walls) - 0.02
       const roof = createRoofGeometry(
         b.rings[0],
         yEaves,
