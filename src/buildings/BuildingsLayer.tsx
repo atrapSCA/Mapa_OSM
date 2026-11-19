@@ -8,7 +8,7 @@ import type {
 import { normalizeKind } from '@shared/osmLabels'
 import { useLayers } from '@/store/layers'
 import { useSelection } from '@/store/selection'
-import { buildingGeometry, geometryMaxY } from './buildingGeom'
+import { buildingBaseY, buildingGeometry, geometryMaxY } from './buildingGeom'
 import { BuildingBubble } from './BuildingBubble'
 import {
   createRoofGeometry,
@@ -16,6 +16,7 @@ import {
   roofShapeForBuilding,
 } from './roofs'
 import { getSkinMaterial, presetForKind } from './skins'
+import { createWindowGeometry, getWindowMaterial } from './windows'
 
 const BUILDING_COLORS: Record<string, string> = {
   building: '#d4cfc4',
@@ -109,7 +110,11 @@ export function BuildingsLayer({
   const parts = useMemo(() => {
     const map = new Map<
       string,
-      { walls: THREE.BufferGeometry; roof: THREE.BufferGeometry | null }
+      {
+        walls: THREE.BufferGeometry
+        roof: THREE.BufferGeometry | null
+        windows: THREE.BufferGeometry | null
+      }
     >()
     for (const b of visible) {
       const shape = roofShapeForBuilding(b)
@@ -133,7 +138,10 @@ export function BuildingsLayer({
         shape,
         riseM * exaggeration,
       )
-      map.set(b.id, { walls, roof })
+      const yBase = buildingBaseY(b, terrain, exaggeration)
+      const wallHExag = yEaves - yBase
+      const windows = createWindowGeometry(b, yBase, wallHExag)
+      map.set(b.id, { walls, roof, windows })
     }
     return map
   }, [visible, terrain, exaggeration])
@@ -180,17 +188,21 @@ export function BuildingsLayer({
           flatShading: true,
           roughness: 0.92,
           metalness: 0.05,
+          side: THREE.DoubleSide,
         }),
       )
     }
     return map
   }, [visible])
 
+  const windowMat = useMemo(() => getWindowMaterial(), [])
+
   useEffect(() => {
     return () => {
       for (const p of parts.values()) {
         p.walls.dispose()
         p.roof?.dispose()
+        p.windows?.dispose()
       }
     }
   }, [parts])
@@ -243,6 +255,14 @@ export function BuildingsLayer({
                 materials={roofMat}
                 selected={selected}
                 onSelect={select}
+              />
+            )}
+            {part.windows && (
+              <mesh
+                geometry={part.windows}
+                material={windowMat}
+                frustumCulled
+                castShadow={false}
               />
             )}
           </group>

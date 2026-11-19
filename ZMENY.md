@@ -4,6 +4,18 @@
 
 ---
 
+## 0.0.29 — 2026-11-19 (větev `feature/building-skins`)
+
+### Střechy (stabilizace)
+- Sedlové/skillion jen přes OBB podle nejdelší hrany půdorysu (bez křehkého ridge-chain)
+- Obě roviny sedla + `DoubleSide` materiály; přesah okapu ~0.3 m
+- Skillion jen u industrial/garage/farm (ne u rodinných domů)
+
+### Okna
+- Emissive quady na fasádách (`src/buildings/windows.ts`) — hashované „svítící“ okna
+
+---
+
 ## 0.0.28 — 2026-11-19 (větev `feature/building-skins`)
 
 > Experimentální větev — pokud nevyjde, smazat větev; `main` zůstane na 0.0.27.

@@ -143,6 +143,7 @@ export function getSkinMaterial(
     flatShading: true,
     roughness: role === 'roof' ? 0.92 : 0.85,
     metalness: skinId.includes('metal') ? 0.35 : 0.04,
+    side: role === 'roof' ? THREE.DoubleSide : THREE.FrontSide,
   })
   materialCache.set(key, mat)
   return mat
