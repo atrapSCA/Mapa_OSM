@@ -49,8 +49,8 @@ function footprintMetrics(ringIn: [number, number][]): FootprintMetrics {
 }
 
 /**
- * Pick roof from footprint geometry first, kind/hash second.
- * Pyramidal almost never in CZ towns — only church towers; else gabled/flat/skillion.
+ * CZ vernacular: large / tall → flat; small / low → classic gable.
+ * Pyramidal only on church towers.
  */
 export function roofShapeForBuilding(b: Building): RoofShape {
   const kind = normalizeKind(b.kind)
@@ -58,47 +58,45 @@ export function roofShapeForBuilding(b: Building): RoofShape {
   const ring = b.rings[0]
   if (!ring || ring.length < 3) return 'flat'
   const m = footprintMetrics(ring)
+  const height = Math.max(2.5, Math.min(80, b.height))
+  // Small & low family-scale building (typical pitched roof in CZ)
+  const smallLow = m.area <= 200 && m.longM <= 22 && height <= 11
+  // Large footprint or panelák / hall scale → flat roof
+  const large = m.area >= 280 || m.longM >= 26 || height >= 13
 
-  // Historical towers / churches — only place pyramidal makes sense in CZ
+  // Historical towers / churches
   if (kind === 'church') {
     if (m.squarish) return 'pyramidal'
     return m.elongated ? 'gabled' : 'flat'
   }
 
-  // Irregular / L / U — pitched OBB looks like a tent over empty yard
+  // L / U / irregular — OBB gable looks wrong; keep flat
+  // (except compact houses that are still mostly rectangular)
   if (m.complex) {
-    if (kind === 'house' && m.fill >= 0.7 && m.elongated) return 'gabled'
+    if (kind === 'house' && smallLow && m.fill >= 0.72) return 'gabled'
     return 'flat'
   }
 
+  // Size rules dominate kind (matches Czech towns)
+  if (large) {
+    if (kind === 'farm' && m.elongated && h < 0.25) return 'gabled'
+    return 'flat'
+  }
+
+  if (smallLow || kind === 'house') {
+    if (kind === 'garage' && h < 0.4) return 'skillion'
+    return 'gabled'
+  }
+
+  // Mid-size
   if (kind === 'industrial' || kind === 'garage') {
-    if (m.elongated && h < 0.55) return 'gabled'
-    if (h < 0.35) return 'skillion'
-    return 'flat'
-  }
-
-  if (kind === 'farm') {
-    if (m.elongated) return 'gabled'
     if (h < 0.4) return 'skillion'
     return 'flat'
   }
-
-  // Houses — gabled (Czech default), never pyramidal
-  if (kind === 'house') return 'gabled'
-
-  // Apartments / commercial — large blocks mostly flat
-  if (
-    kind === 'apartments' ||
-    kind === 'commercial' ||
-    kind === 'public' ||
-    kind === 'building'
-  ) {
-    if (m.longM > 28 || m.area > 450) return h < 0.2 && m.elongated ? 'gabled' : 'flat'
-    if (m.elongated && h < 0.45) return 'gabled'
-    return 'flat'
-  }
-
-  if (m.elongated) return 'gabled'
+  if (kind === 'farm') return m.elongated ? 'gabled' : 'flat'
+  if (kind === 'apartments') return 'flat'
+  // Smaller commercial / public / generic — often still pitched in older fabric
+  if (m.elongated || h < 0.55) return 'gabled'
   return 'flat'
 }
 
@@ -332,11 +330,11 @@ export function createRoofGeometry(
     return i
   }
 
-  // Guard: pitched OBB only where footprint allows; pyramidal only if still requested
+  // Guard: skip pitched OBB only on clearly broken footprints (empty yard under OBB)
   const metrics = footprintMetrics(ringIn)
   let resolved: RoofShape = shape
   if (shape === 'pyramidal' && !metrics.squarish) resolved = 'flat'
-  if (shape === 'gabled' && metrics.complex && !metrics.elongated) resolved = 'flat'
+  if (shape === 'gabled' && metrics.fill < 0.68) resolved = 'flat'
 
   if (resolved === 'flat') {
     buildFlatRoof(ring, yEaves, positions, indices, push)
