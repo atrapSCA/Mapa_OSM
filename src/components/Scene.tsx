@@ -130,6 +130,7 @@ export function Scene({ region }: { region: LoadedRegion }) {
         <BuildingsLayer
           buildings={region.buildings}
           terrain={region.terrain}
+          roads={region.roads}
         />
       )}
       <PlaceholderLayers />
