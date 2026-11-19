@@ -333,8 +333,9 @@ export function BuildingsLayer({
               <mesh
                 geometry={part.windows}
                 material={windowMat}
-                frustumCulled
+                frustumCulled={false}
                 castShadow={false}
+                renderOrder={2}
               />
             )}
           </group>
