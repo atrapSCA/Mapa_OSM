@@ -1,0 +1,10 @@
+node_modules
+dist
+.DS_Store
+*.log
+.env
+.env.*
+data/raw
+# Generated tiles can be large — keep local; regenerate via pipeline
+data/tiles
+public/tiles
